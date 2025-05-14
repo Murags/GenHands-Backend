@@ -30,9 +30,9 @@ jobs:
         echo "$SSH_PRIVATE_KEY" > private_key
         chmod 600 private_key
         # Copy the docker-compose.yml file to the server
-        scp -i private_key docker-compose.yml $SERVER_USER@$SERVER_HOST:/opt/genhands-backend/docker-compose.yml
+        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key docker-compose.yml $SERVER_USER@$SERVER_HOST:/opt/genhands-backend/docker-compose.yml
 
-        ssh -i private_key $SERVER_USER@$SERVER_HOST << EOF
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key $SERVER_USER@$SERVER_HOST << EOF
           mkdir -p /opt/genhands-backend
           cd /opt/genhands-backend
 
