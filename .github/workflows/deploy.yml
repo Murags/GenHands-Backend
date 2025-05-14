@@ -1,0 +1,53 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+
+    - name: Build Docker Image
+      run: docker build -t genhands-be .
+
+    - name: Push Docker Image to Server
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+      run: |
+        echo "$SSH_PRIVATE_KEY" > private_key
+        chmod 600 private_key
+        # Copy the docker-compose.yml file to the server
+        scp -i private_key docker-compose.yml $SERVER_USER@$SERVER_HOST:/opt/genhands-backend/docker-compose.yml
+
+        ssh -i private_key $SERVER_USER@$SERVER_HOST << EOF
+          mkdir -p /opt/genhands-backend
+          cd /opt/genhands-backend
+
+          # Create .env file for docker-compose
+          echo "Creating .env file on the server..."
+          printf "NODE_ENV=production\n" > .env
+          printf "PORT=3000\n" >> .env
+          # Use printf to safely write the MONGODB_URI secret to the .env file
+          # Ensure the secret in GitHub is named DB_URI
+          printf "MONGODB_URI='%s'\n" "${{ secrets.DB_URI }}" >> .env
+
+          echo ".env file content (excluding sensitive URI for log safety if direct cat was used):"
+          ls -l .env # Verify .env file creation and permissions
+
+          docker-compose down
+          # Optional: docker-compose pull # If you were pushing to a registry and wanted to ensure latest image
+          docker-compose up -d --build
+        EOF
