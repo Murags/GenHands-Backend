@@ -1,8 +1,7 @@
-version: '3.8'
-
 services:
   app:
-    image: genhands-be
+    build: . # Tells docker-compose to build using the Dockerfile in the current directory
+    image: genhands-be # Specifies the name for the built image
     container_name: genhands_backend_app
     restart: always
     ports:
@@ -13,4 +12,3 @@ services:
       - NODE_ENV=${NODE_ENV}
       - PORT=${PORT}
       - MONGODB_URI=${MONGODB_URI}
-    # Add any other environment variables your app.js needs to connect to services or configure itself
