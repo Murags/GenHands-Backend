@@ -18,41 +18,50 @@ jobs:
       with:
         node-version: 16
 
-    - name: Build Docker Image
-      run: docker build -t genhands-be .
-
-    - name: Push Docker Image to Server
+    - name: Deploy to Server
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         SERVER_HOST: ${{ secrets.SERVER_HOST }}
         SERVER_USER: ${{ secrets.SERVER_USER }}
+        DB_URI: ${{ secrets.DB_URI }} # Ensure DB_URI is explicitly passed to env
       run: |
         echo "$SSH_PRIVATE_KEY" > private_key
         chmod 600 private_key
 
-        # First, ensure the directory exists on the server using sudo
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key $SERVER_USER@$SERVER_HOST "sudo mkdir -p /opt/genhands-backend"
+        TARGET_DIR="/opt/genhands-backend"
+        GIT_REPO_URL="https://github.com/${{ github.repository }}.git"
 
-        # Now, copy the docker-compose.yml file to the server
-        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key docker-compose.yml $SERVER_USER@$SERVER_HOST:/opt/genhands-backend/docker-compose.yml
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key $SERVER_USER@$SERVER_HOST "sudo mkdir -p $TARGET_DIR && sudo chown $SERVER_USER:$SERVER_USER $TARGET_DIR"
 
-        # Then, execute the rest of the deployment commands
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key $SERVER_USER@$SERVER_HOST << EOF
-          # The directory should already exist, cd into it
-          sudo cd /opt/genhands-backend
+          set -e
+          cd "$TARGET_DIR"
 
-          # Create .env file for docker-compose
-          sudo echo "Creating .env file on the server..."
-          sudo printf "NODE_ENV=production\n" > .env
-          sudo printf "PORT=3000\n" >> .env
-          # Use printf to safely write the MONGODB_URI secret to the .env file
-          # Ensure the secret in GitHub is named DB_URI
-          sudo printf "MONGODB_URI='%s'\n" "${{ secrets.DB_URI }}" >> .env
+          echo "Current directory: $(pwd)"
+          echo "Current user: $(whoami)"
 
-          sudo echo ".env file content (excluding sensitive URI for log safety if direct cat was used):"
-          sudo ls -l .env # Verify .env file creation and permissions
+          if [ ! -d ".git" ]; then
+            echo "Cloning repository..."
+            git clone --depth 1 --branch main "$GIT_REPO_URL" .
+          else
+            echo "Pulling latest changes..."
+            git checkout main
+            git fetch origin main
+            git reset --hard origin/main
+          fi
 
+          echo "Creating .env file..."
+          printf "NODE_ENV=production\n" > .env
+          printf "PORT=3000\n" >> .env
+          printf "MONGODB_URI='%s'\n" "$DB_URI" >> .env
+
+          echo ".env file created."
+          ls -l .env
+
+          echo "Running docker-compose commands..."
           sudo docker-compose down
-          # Optional: docker-compose pull # If you were pushing to a registry and wanted to ensure latest image
-          sudo docker-compose up -d --build
+          sudo docker-compose build --no-cache
+          sudo docker-compose up -d
+
+          echo "Deployment script finished."
         EOF
