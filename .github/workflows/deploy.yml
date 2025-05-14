@@ -29,11 +29,16 @@ jobs:
       run: |
         echo "$SSH_PRIVATE_KEY" > private_key
         chmod 600 private_key
-        # Copy the docker-compose.yml file to the server
+
+        # First, ensure the directory exists on the server using sudo
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key $SERVER_USER@$SERVER_HOST "sudo mkdir -p /opt/genhands-backend"
+
+        # Now, copy the docker-compose.yml file to the server
         scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key docker-compose.yml $SERVER_USER@$SERVER_HOST:/opt/genhands-backend/docker-compose.yml
 
+        # Then, execute the rest of the deployment commands
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key $SERVER_USER@$SERVER_HOST << EOF
-          mkdir -p /opt/genhands-backend
+          # The directory should already exist, cd into it
           cd /opt/genhands-backend
 
           # Create .env file for docker-compose
