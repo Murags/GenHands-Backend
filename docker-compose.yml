@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  app:
+    image: genhands-be
+    container_name: genhands_backend_app
+    restart: always
+    ports:
+      - "8080:3000" # Exposes port 8080 on the VM and maps it to port 3000 in the container
+    # The following environment variables will be sourced from a .env file
+    # created by the GitHub Actions workflow in the deployment directory.
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${PORT}
+      - MONGODB_URI=${MONGODB_URI}
+    # Add any other environment variables your app.js needs to connect to services or configure itself
