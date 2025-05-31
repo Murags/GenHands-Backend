@@ -44,14 +44,22 @@ const registerUser = async (req, res) => {
         await newUser.save();
 
         if (newUser) {
-            res.status(201).json({
+            const response = {
                 _id: newUser._id,
                 name: newUser.name,
                 email: newUser.email,
                 role: newUser.role,
-                userType: newUser.userType, // From discriminator
+                userType: newUser.userType,
+                isVerified: newUser.isVerified,
                 token: generateToken(newUser._id, newUser.role),
-            });
+            };
+
+            if ((newUser.role === 'volunteer' || newUser.role === 'charity') && !newUser.isVerified) {
+                response.message = 'Your account has been created and is pending approval by an administrator. You will be notified when your account is verified.';
+                response.isPending = true;
+            }
+
+            res.status(201).json(response);
         } else {
             res.status(400).json({ message: 'Invalid user data' });
         }
@@ -75,12 +83,20 @@ const loginUser = async (req, res) => {
         const user = await User.findOne({ email }).select('+password');
 
         if (user && (await user.matchPassword(password))) {
+            if ((user.role === 'volunteer' || user.role === 'charity') && !user.isVerified) {
+                return res.status(403).json({
+                    message: 'Your account is pending approval. Please wait for an administrator to verify your account.',
+                    isPending: true
+                });
+            }
+
             res.json({
                 _id: user._id,
                 name: user.name,
                 email: user.email,
                 role: user.role,
                 userType: user.userType,
+                isVerified: user.isVerified,
                 token: generateToken(user._id, user.role),
             });
         } else {
@@ -92,4 +108,79 @@ const loginUser = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser };
+// @desc    Verify a user (approve or reject)
+// @route   PUT /api/auth/verify/:id
+// @access  Private/Admin
+const verifyUser = async (req, res) => {
+    try {
+        const { approve } = req.body;
+
+        if (approve === undefined) {
+            return res.status(400).json({ message: 'Please specify whether to approve or reject the user' });
+        }
+
+        const userId = req.params.id;
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.role !== 'volunteer' && user.role !== 'charity') {
+            return res.status(400).json({ message: 'Only volunteers and charities require verification' });
+        }
+
+        user.isVerified = approve;
+
+        if (user.role === 'volunteer' || user.role === 'charity') {
+            let specificUser;
+
+            if (user.role === 'volunteer') {
+                specificUser = await Volunteer.findById(userId);
+            } else if (user.role === 'charity') {
+                specificUser = await Charity.findById(userId);
+            }
+
+            if (specificUser) {
+                specificUser.verificationStatus = approve ? 'verified' : 'rejected';
+                specificUser.verifiedBy = req.user._id; // Current admin's ID from auth middleware
+                await specificUser.save();
+            }
+        }
+
+        await user.save();
+
+        res.json({
+            message: `User ${approve ? 'approved' : 'rejected'} successfully`,
+            user: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                isVerified: user.isVerified
+            }
+        });
+    } catch (error) {
+        console.error('Error during user verification:', error);
+        res.status(500).json({ message: 'Server error during verification', error: error.message });
+    }
+};
+
+// @desc    Get all users pending verification
+// @route   GET /api/auth/pending-verification
+// @access  Private/Admin
+const getUsersPendingVerification = async (req, res) => {
+    try {
+        const pendingUsers = await User.find({
+            isVerified: false,
+            role: { $in: ['volunteer', 'charity'] }
+        }).select('-password');
+
+        res.json(pendingUsers);
+    } catch (error) {
+        console.error('Error fetching pending users:', error);
+        res.status(500).json({ message: 'Server error fetching pending users', error: error.message });
+    }
+};
+
+export { registerUser, loginUser, verifyUser, getUsersPendingVerification };

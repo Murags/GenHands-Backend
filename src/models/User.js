@@ -32,6 +32,12 @@ const UserSchema = new mongoose.Schema({
         enum: ['donor', 'volunteer', 'admin', 'charity'],
         required: [true, 'Please specify a user role'],
     },
+    isVerified: {
+        type: Boolean,
+        default: function() {
+            return this.role === 'donor' || this.role === 'admin';
+        }
+    },
     phoneNumber: {
         type: String,
     },
