@@ -142,7 +142,17 @@ const CharitySchema = new mongoose.Schema({
   contactLastName: { type: String },
   contactEmail: { type: String },
   contactPhone: { type: String },
-  verificationDocuments: [String]
+  verificationDocuments: [String],
+  verificationStatus: {
+    type: String,
+    enum: ['pending', 'verified', 'rejected', 'in_progress'],
+    default: 'pending'
+  },
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  }
 });
 const Charity = User.discriminator('Charity', CharitySchema);
 
