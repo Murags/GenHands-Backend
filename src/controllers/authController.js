@@ -25,6 +25,11 @@ const registerUser = async (req, res) => {
                 newUser = new Donor(userData);
                 break;
             case 'volunteer':
+                let volunteerDocs = [];
+                if (req.files && req.files.length > 0) {
+                    volunteerDocs = req.files.map(file => file.path);
+                }
+                userData.verificationDocuments = volunteerDocs;
                 newUser = new Volunteer(userData);
                 break;
             case 'admin':
@@ -33,8 +38,23 @@ const registerUser = async (req, res) => {
                 break;
             case 'charity':
                 if (!otherDetails.charityName) {
-                     return res.status(400).json({ message: 'Charity name is required for charity role' });
+                    return res.status(400).json({ message: 'Charity name is required for charity role' });
                 }
+                // Handle file uploads
+                let documentPaths = [];
+                if (req.files && req.files.length > 0) {
+                    documentPaths = req.files.map(file => file.path);
+                }
+                userData.charityName = otherDetails.charityName;
+                userData.category = otherDetails.category;
+                userData.location = otherDetails.location;
+                userData.description = otherDetails.description;
+                userData.registrationNumber = otherDetails.registrationNumber;
+                userData.contactFirstName = otherDetails.contactFirstName;
+                userData.contactLastName = otherDetails.contactLastName;
+                userData.contactEmail = otherDetails.contactEmail;
+                userData.contactPhone = otherDetails.contactPhone;
+                userData.verificationDocuments = documentPaths;
                 newUser = new Charity(userData);
                 break;
             default:
