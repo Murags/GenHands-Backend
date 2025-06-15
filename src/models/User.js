@@ -131,42 +131,29 @@ const AdminSchema = new mongoose.Schema({
 const Admin = User.discriminator('Admin', AdminSchema);
 
 // Charity Schema (inherits from User)
-// TODO: Adapt this schema to the needs of the charity, Temporary schema for testing
+// Janny was here :-)
 const CharitySchema = new mongoose.Schema({
-    charityName: {
-        type: String,
-        required: [function() { return this.role === 'charity'; }, 'Charity name is required'],
-    },
-    registrationNumber: {
-        type: String,
-    },
-    description: {
-        type: String,
-    },
-    category: { // e.g., "Children", "Animals", "Homelessness", "Education"
-        type: String,
-    },
-    websiteUrl: {
-        type: String,
-    },
-    logoUrl: {
-        type: String,
-    },
-    verificationStatus: {
-        type: String,
-        enum: ['pending', 'verified', 'rejected', 'in_progress'],
-        default: 'pending',
-    },
-    verifiedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-    },
-    documents: [{
-        name: String,
-        url: String,
-    }],
+  charityName: { type: String, required: true },
+  category: { type: String },
+  location: { type: String },
+  description: { type: String },
+  registrationNumber: { type: String },
+  contactFirstName: { type: String },
+  contactLastName: { type: String },
+  contactEmail: { type: String },
+  contactPhone: { type: String },
+  verificationDocuments: [String],
+  verificationStatus: {
+    type: String,
+    enum: ['pending', 'verified', 'rejected', 'in_progress'],
+    default: 'pending'
+  },
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  }
 });
 const Charity = User.discriminator('Charity', CharitySchema);
-
 
 export { User, Donor, Volunteer, Admin, Charity };

@@ -1,6 +1,8 @@
 import express from 'express';
 import { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers } from '../controllers/authController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
+import volunteerUpload from '../middleware/uploads/volunteerDocs/volunteerDocs.js';
+import charityUpload from '../middleware/uploads/charityDocs/charityDocs.js';
 
 const router = express.Router();
 
@@ -13,9 +15,139 @@ const router = express.Router();
 
 /**
  * @swagger
+ * /auth/register/volunteer:
+ *   post:
+ *     summary: Register a new volunteer
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - documents
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Jane Doe
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: jane@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: password123
+ *               documents:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Supporting documents (required)
+ *     responses:
+ *       201:
+ *         description: Volunteer registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id: { type: string }
+ *                 name: { type: string }
+ *                 email: { type: string }
+ *                 role: { type: string }
+ *                 userType: { type: string }
+ *                 isVerified: { type: boolean }
+ *                 verificationStatus: { type: string }
+ *                 token: { type: string }
+ *                 message:
+ *                   type: string
+ *                   description: Verification message for volunteers
+ *                 isPending:
+ *                   type: boolean
+ *                   description: Flag indicating if verification is pending
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+// Volunteer registration
+router.post('/register/volunteer', volunteerUpload.array('documents'), registerUser);
+
+/**
+ * @swagger
+ * /auth/register/charity:
+ *   post:
+ *     summary: Register a new charity
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - documents
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Charity Org
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: charity@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: password123
+ *               documents:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Supporting documents (required)
+ *     responses:
+ *       201:
+ *         description: Charity registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id: { type: string }
+ *                 name: { type: string }
+ *                 email: { type: string }
+ *                 role: { type: string }
+ *                 userType: { type: string }
+ *                 isVerified: { type: boolean }
+ *                 verificationStatus: { type: string }
+ *                 token: { type: string }
+ *                 message:
+ *                   type: string
+ *                   description: Verification message for charities
+ *                 isPending:
+ *                   type: boolean
+ *                   description: Flag indicating if verification is pending
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+// Charity registration
+router.post('/register/charity', charityUpload.array('documents'), registerUser);
+
+/**
+ * @swagger
  * /auth/register:
  *   post:
- *     summary: Register a new user
+ *     summary: Register a new donor or admin
  *     tags: [Authentication]
  *     requestBody:
  *       required: true
@@ -31,22 +163,22 @@ const router = express.Router();
  *             properties:
  *               name:
  *                 type: string
- *                 example: Jane Doe
+ *                 example: John Donor
  *               email:
  *                 type: string
  *                 format: email
- *                 example: jane@example.com
+ *                 example: donor@example.com
  *               password:
  *                 type: string
  *                 format: password
  *                 example: password123
  *               role:
  *                 type: string
- *                 enum: [donor, volunteer, admin, charity]
- *                 example: volunteer
+ *                 enum: [donor, admin]
+ *                 example: donor
  *     responses:
  *       201:
- *         description: User registered successfully
+ *         description: Donor or admin registered successfully
  *         content:
  *           application/json:
  *             schema:
@@ -60,20 +192,13 @@ const router = express.Router();
  *                 isVerified: { type: boolean }
  *                 verificationStatus: { type: string }
  *                 token: { type: string }
- *                 message: {
- *                   type: string,
- *                   description: Verification message for volunteers/charities
- *                 }
- *                 isPending: {
- *                   type: boolean,
- *                   description: Flag indicating if verification is pending
- *                 }
  *       400:
  *         description: Invalid input
  *       500:
  *         description: Server error
  */
-router.post('/register', registerUser);
+// Donor registration
+router.post('/register', registerUser)
 
 /**
  * @swagger
