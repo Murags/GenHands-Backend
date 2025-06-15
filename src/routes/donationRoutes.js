@@ -19,7 +19,7 @@ const router = express.Router();
  *     description: Volunteer pickup request management
  */
 
-router.post('/', submitDonation);
+router.post('/', protect, submitDonation);
 router.get('/search-addresses', searchAddresses);
 router.get('/pickup-requests', getPickupRequests);
 router.patch('/pickup-requests/:id/status', protect, updatePickupStatus);

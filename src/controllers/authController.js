@@ -334,4 +334,17 @@ const getUsersPendingVerification = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers };
+// @desc    Get all verified charities
+// @route   GET /api/auth/charities
+// @access  Public
+const getCharities = async (req, res) => {
+    try {
+        const charities = await Charity.find({ verificationStatus: 'verified' }).select('-password');
+        res.json(charities);
+    } catch (error) {
+        console.error('Error fetching charities:', error);
+        res.status(500).json({ message: 'Server error fetching charities' });
+    }
+};
+
+export { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers, getCharities };

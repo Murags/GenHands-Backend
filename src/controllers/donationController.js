@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import Donation from '../models/Donation.js';
+import { Charity } from '../models/User.js';
 import PickupRequest from '../models/PickupRequest.js';
 import { geocodeAddress, calculateDistance, validateCoordinates } from '../utils/geocoding.js';
 
@@ -136,7 +137,8 @@ import { geocodeAddress, calculateDistance, validateCoordinates } from '../utils
 export const submitDonation = async (req, res) => {
   try {
     const donationData = req.body;
-    const { pickupCoordinates } = donationData;
+    const { pickupCoordinates, charityId } = donationData;
+    const loggedInUser = req.user;
 
     // Validate coordinates
     if (!pickupCoordinates || !validateCoordinates(pickupCoordinates)) {
@@ -146,6 +148,12 @@ export const submitDonation = async (req, res) => {
       });
     }
 
+    // Fetch the charity to get destination coordinates
+    const charity = await Charity.findById(charityId);
+    if (!charity) {
+      return res.status(404).json({ success: false, message: 'Charity not found' });
+    }
+
     // Generate unique ID
     const donationId = `DON-${Date.now()}`;
 
@@ -153,6 +161,11 @@ export const submitDonation = async (req, res) => {
     const donation = new Donation({
       id: donationId,
       ...donationData,
+      donorId: loggedInUser._id,
+      donorName: loggedInUser.name,
+      donorEmail: loggedInUser.email,
+      donorPhone: loggedInUser.phoneNumber || donationData.donorPhone,
+      destination: charity.location,
       pickupCoordinates: {
         type: 'Point',
         coordinates: pickupCoordinates
@@ -161,20 +174,20 @@ export const submitDonation = async (req, res) => {
 
     await donation.save();
 
-    // Create corresponding pickup request
+
     const pickupRequest = new PickupRequest({
       id: donationId,
       donationId: donationId,
-      charityName: donationData.preferredCharity,
+      charityName: charity.charityName,
       pickupAddress: donationData.pickupAddress,
       pickupCoordinates: {
         type: 'Point',
         coordinates: pickupCoordinates
       },
-      deliveryAddress: donationData.preferredCharity,
-      contactPerson: donationData.donorName,
-      contactPhone: donationData.donorPhone,
-      contactEmail: donationData.donorEmail,
+      deliveryAddress: charity.address || charity.charityName,
+      contactPerson: loggedInUser.name,
+      contactPhone: loggedInUser.phoneNumber || donationData.donorPhone,
+      contactEmail: loggedInUser.email,
       items: donationData.donationItems.map(item => ({
         category: item.category,
         description: item.description,

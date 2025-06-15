@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers } from '../controllers/authController.js';
+import { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers, getCharities } from '../controllers/authController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import volunteerUpload from '../middleware/uploads/volunteerDocs/volunteerDocs.js';
 import charityUpload from '../middleware/uploads/charityDocs/charityDocs.js';
@@ -406,5 +406,7 @@ router.get('/pending-verification', getUsersPendingVerification); /* Add protect
  *         description: Server error
  */
 router.put('/verify/:id', verifyUser); /* Add protect and admin middleware */
+
+router.route('/charities').get(getCharities);
 
 export default router;
