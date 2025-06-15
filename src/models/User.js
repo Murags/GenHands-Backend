@@ -135,7 +135,6 @@ const Admin = User.discriminator('Admin', AdminSchema);
 const CharitySchema = new mongoose.Schema({
   charityName: { type: String, required: true },
   category: { type: String },
-  location: { type: String },
   description: { type: String },
   registrationNumber: { type: String },
   contactFirstName: { type: String },

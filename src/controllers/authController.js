@@ -47,7 +47,26 @@ const registerUser = async (req, res) => {
                 }
                 userData.charityName = otherDetails.charityName;
                 userData.category = otherDetails.category;
-                userData.location = otherDetails.location;
+
+                let locationData = otherDetails.location;
+                if (locationData && typeof locationData === 'string') {
+                    try {
+                        locationData = JSON.parse(locationData);
+                    } catch (e) {
+                        console.error('Error parsing location data from string:', e);
+                        locationData = null;
+                    }
+                }
+
+                if (locationData && Array.isArray(locationData.coordinates) && locationData.coordinates.length === 2) {
+                    userData.location = {
+                        type: 'Point',
+                        coordinates: locationData.coordinates
+                    };
+                }
+
+                console.log(userData);
+
                 userData.description = otherDetails.description;
                 userData.registrationNumber = otherDetails.registrationNumber;
                 userData.contactFirstName = otherDetails.contactFirstName;
