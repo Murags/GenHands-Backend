@@ -1,5 +1,6 @@
 import { User, Donor, Volunteer, Admin, Charity } from '../models/User.js';
 import generateToken from '../utils/generateToken.js';
+import mongoose from 'mongoose';
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -214,25 +215,45 @@ const verifyUser = async (req, res) => {
         }
 
         const newStatus = action === 'approve' ? 'verified' : 'rejected';
-        specificUser.verificationStatus = newStatus;
-        // specificUser.verifiedBy = req.user._id;
 
-        user.isVerified = action === 'approve';
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        await specificUser.save();
-        await user.save();
+        try {
+          const specificUpdate = {
+            verificationStatus: newStatus,
+            verifiedBy: req.user._id
+          };
+          await specificUser.constructor.findByIdAndUpdate(userId, { $set: specificUpdate }, { session });
 
-        res.json({
+          const userUpdate = {
+            isVerified: action === 'approve'
+          };
+          await User.findByIdAndUpdate(userId, { $set: userUpdate }, { session });
+
+          await session.commitTransaction();
+          session.endSession();
+
+          const updatedUser = await User.findById(userId).lean();
+          const updatedSpecificUser = await specificUser.constructor.findById(userId).lean();
+
+          res.json({
             message: `User ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
             user: {
-                _id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                isVerified: user.isVerified,
-                verificationStatus: specificUser.verificationStatus
+              _id: updatedUser._id,
+              name: updatedUser.name,
+              email: updatedUser.email,
+              role: updatedUser.role,
+              isVerified: updatedUser.isVerified,
+              verificationStatus: updatedSpecificUser.verificationStatus
             }
-        });
+          });
+        } catch (error) {
+          await session.abortTransaction();
+          session.endSession();
+          console.error('Error during user verification transaction:', error);
+          res.status(500).json({ message: 'Server error during verification', error: error.message });
+        }
     } catch (error) {
         console.error('Error during user verification:', error);
         res.status(500).json({ message: 'Server error during verification', error: error.message });
@@ -334,4 +355,17 @@ const getUsersPendingVerification = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers };
+// @desc    Get all verified charities
+// @route   GET /api/auth/charities
+// @access  Public
+const getCharities = async (req, res) => {
+    try {
+        const charities = await Charity.find({ verificationStatus: 'verified' }).select('-password');
+        res.json(charities);
+    } catch (error) {
+        console.error('Error fetching charities:', error);
+        res.status(500).json({ message: 'Server error fetching charities' });
+    }
+};
+
+export { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers, getCharities };

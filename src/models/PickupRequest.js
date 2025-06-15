@@ -1,27 +1,21 @@
 import mongoose from 'mongoose';
 
 const pickupRequestSchema = new mongoose.Schema({
-  id: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  },
-  donationId: {
-    type: String,
+  donation: {
+    type: mongoose.Schema.Types.ObjectId,
     required: true,
     ref: 'Donation',
     index: true
   },
-  volunteerId: {
-    type: String,
+  volunteer: {
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     index: true
   },
-  charityName: {
-    type: String,
-    required: true,
-    maxlength: 255
+  charity: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   },
   pickupAddress: {
     type: String,
@@ -58,7 +52,10 @@ const pickupRequestSchema = new mongoose.Schema({
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
   },
   items: [{
-    category: String,
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category'
+    },
     description: String,
     quantity: String,
     condition: String
@@ -105,8 +102,8 @@ const pickupRequestSchema = new mongoose.Schema({
 // Compound indexes for optimized queries
 pickupRequestSchema.index({ status: 1, priority: 1 });
 pickupRequestSchema.index({ status: 1, createdAt: -1 });
-pickupRequestSchema.index({ volunteerId: 1, status: 1 });
-pickupRequestSchema.index({ charityName: 1 });
+pickupRequestSchema.index({ volunteer: 1, status: 1 });
+pickupRequestSchema.index({ charity: 1 });
 
 // Method to calculate distance from volunteer location
 pickupRequestSchema.methods.calculateDistance = function(volunteerCoordinates) {

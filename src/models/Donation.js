@@ -2,9 +2,9 @@ import mongoose from 'mongoose';
 
 const donationItemSchema = new mongoose.Schema({
   category: {
-    type: String,
-    required: true,
-    enum: ['Food items', 'Clothing', 'Electronics', 'Books', 'Toys', 'Furniture', 'Medical supplies', 'Household items', 'Other']
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    required: true
   },
   description: {
     type: String,
@@ -28,6 +28,12 @@ const donationSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
+    index: true
+  },
+  donorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
     index: true
   },
   donorName: {
@@ -91,10 +97,20 @@ const donationSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  preferredCharity: {
-    type: String,
-    required: true,
-    maxlength: 255
+  charityId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  destination: {
+    type: {
+      type: String,
+      enum: ['Point'],
+    },
+    coordinates: {
+      type: [Number],
+      index: '2dsphere'
+    }
   },
   deliveryInstructions: {
     type: String,
@@ -151,7 +167,7 @@ function arrayLimit(val) {
 
 // Compound indexes for performance
 donationSchema.index({ status: 1, urgencyLevel: 1 });
-donationSchema.index({ preferredCharity: 1 });
+donationSchema.index({ charityId: 1 });
 donationSchema.index({ createdAt: -1 });
 
 const Donation = mongoose.model('Donation', donationSchema);
