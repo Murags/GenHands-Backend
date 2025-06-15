@@ -2,9 +2,9 @@ import mongoose from 'mongoose';
 
 const donationItemSchema = new mongoose.Schema({
   category: {
-    type: String,
-    required: true,
-    enum: ['Food items', 'Clothing', 'Electronics', 'Books', 'Toys', 'Furniture', 'Medical supplies', 'Household items', 'Other']
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    required: true
   },
   description: {
     type: String,
