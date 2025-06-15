@@ -405,7 +405,7 @@ router.get('/pending-verification', getUsersPendingVerification); /* Add protect
  *       500:
  *         description: Server error
  */
-router.put('/verify/:id', verifyUser); /* Add protect and admin middleware */
+router.put('/verify/:id', protect, admin, verifyUser);
 
 router.route('/charities').get(getCharities);
 

@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
+import mongoose from 'mongoose';
 import Donation from '../models/Donation.js';
 import { Charity } from '../models/User.js';
+import Category from '../models/Category.js';
 import PickupRequest from '../models/PickupRequest.js';
 import { geocodeAddress, calculateDistance, validateCoordinates } from '../utils/geocoding.js';
 
@@ -154,6 +156,25 @@ export const submitDonation = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Charity not found' });
     }
 
+
+    const processedItems = [];
+    for (const item of donationData.donationItems) {
+      let categoryId = item.category;
+
+      if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+        const categoryObj = await Category.findOne({ name: { $regex: new RegExp(`^${item.category}$`, 'i') } });
+        if (!categoryObj) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid category specified: "${item.category}". This category does not exist.`
+          });
+        }
+        categoryId = categoryObj._id;
+      }
+
+      processedItems.push({ ...item, category: categoryId });
+    }
+
     // Generate unique ID
     const donationId = `DON-${Date.now()}`;
 
@@ -161,6 +182,7 @@ export const submitDonation = async (req, res) => {
     const donation = new Donation({
       id: donationId,
       ...donationData,
+      donationItems: processedItems, // Use processed items with ObjectId
       donorId: loggedInUser._id,
       donorName: loggedInUser.name,
       donorEmail: loggedInUser.email,
@@ -174,11 +196,10 @@ export const submitDonation = async (req, res) => {
 
     await donation.save();
 
-
+    // Create corresponding pickup request
     const pickupRequest = new PickupRequest({
-      id: donationId,
-      donationId: donationId,
-      charityName: charity.charityName,
+      donation: donation._id,
+      charity: charity._id,
       pickupAddress: donationData.pickupAddress,
       pickupCoordinates: {
         type: 'Point',
@@ -210,12 +231,12 @@ export const submitDonation = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      submissionId: donationId,
+      submissionId: donation.id,
       message: 'Donation submitted successfully',
       data: {
         donation,
         pickupRequest: {
-          id: pickupRequest.id,
+          id: pickupRequest._id,
           status: pickupRequest.status,
           priority: pickupRequest.priority
         }
@@ -370,6 +391,7 @@ export const getPickupRequests = async (req, res) => {
     const formattedRequests = pickupRequests.map(request => {
       let distance = null;
       let estimatedTime = null;
+      const charity = request.charity;
 
       if (volunteersLocation && request.pickupCoordinates?.coordinates) {
         const requestCoordsLatLon = [request.pickupCoordinates.coordinates[1], request.pickupCoordinates.coordinates[0]];
@@ -379,8 +401,8 @@ export const getPickupRequests = async (req, res) => {
       }
 
       return {
-        id: request.id,
-        charity: request.charityName,
+        id: request._id,
+        charity: charity ? charity.charityName : 'N/A',
         address: request.pickupAddress,
         coordinates: request.pickupCoordinates?.coordinates,
         items: request.items.map(item => `${item.description} (${item.quantity})`),
@@ -397,10 +419,15 @@ export const getPickupRequests = async (req, res) => {
       };
     });
 
+    const filteredRequests = formattedRequests.filter(request => {
+      const originalRequest = pickupRequests.find(pr => pr._id.equals(request.id));
+      return !!originalRequest.donation;
+    });
+
     res.json({
       success: true,
-      requests: formattedRequests,
-      count: formattedRequests.length
+      requests: filteredRequests,
+      count: filteredRequests.length
     });
 
   } catch (error) {
@@ -458,7 +485,7 @@ export const getPickupRequests = async (req, res) => {
 export const updatePickupStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, volunteerId, notes } = req.body;
+    const { status, notes } = req.body;
 
     // Validate status
     const validStatuses = [
@@ -474,7 +501,7 @@ export const updatePickupStatus = async (req, res) => {
     }
 
     // Find pickup request
-    const pickupRequest = await PickupRequest.findOne({ id });
+    const pickupRequest = await PickupRequest.findById(id);
     if (!pickupRequest) {
       return res.status(404).json({
         success: false,
@@ -488,8 +515,8 @@ export const updatePickupStatus = async (req, res) => {
       updatedAt: new Date()
     };
 
-    if (volunteerId) {
-      updateData.volunteerId = volunteerId;
+    if (status === 'accepted') {
+      updateData.volunteer = req.user._id;
     }
 
     if (status === 'accepted' && !pickupRequest.metadata.acceptedAt) {
@@ -504,8 +531,8 @@ export const updatePickupStatus = async (req, res) => {
       updateData['metadata.statusNotes'] = notes;
     }
 
-    const updatedRequest = await PickupRequest.findOneAndUpdate(
-      { id },
+    const updatedRequest = await PickupRequest.findByIdAndUpdate(
+      id,
       { $set: updateData },
       { new: true }
     );
@@ -522,8 +549,8 @@ export const updatePickupStatus = async (req, res) => {
       donationStatus = 'cancelled';
     }
 
-    await Donation.findOneAndUpdate(
-      { id },
+    await Donation.findByIdAndUpdate(
+      pickupRequest.donation,
       { status: donationStatus }
     );
 
@@ -531,9 +558,9 @@ export const updatePickupStatus = async (req, res) => {
       success: true,
       message: 'Status updated successfully',
       updatedRequest: {
-        id: updatedRequest.id,
+        id: updatedRequest._id,
         status: updatedRequest.status,
-        volunteerId: updatedRequest.volunteerId,
+        volunteerId: updatedRequest.volunteer,
         updatedAt: updatedRequest.updatedAt
       }
     });
@@ -583,7 +610,7 @@ export const getDonationById = async (req, res) => {
     }
 
     // Get associated pickup request
-    const pickupRequest = await PickupRequest.findOne({ donationId: id }).lean();
+    const pickupRequest = await PickupRequest.findOne({ donation: donation._id }).lean();
 
     res.json({
       success: true,
@@ -667,6 +694,71 @@ export const searchAddresses = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to search addresses',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+// @desc    Get all pickup requests assigned to the logged-in volunteer
+// @route   GET /api/donations/my-pickups
+// @access  Private/Volunteer
+export const getVolunteerPickups = async (req, res) => {
+  try {
+    const volunteerId = req.user._id;
+    const { status } = req.query;
+
+    let query = { volunteer: volunteerId };
+
+    if (status) {
+      query.status = status;
+    }
+
+    const pickupRequests = await PickupRequest.find(query)
+      .populate({
+        path: 'charity',
+        select: 'charityName address'
+      })
+      .populate({
+        path: 'donation',
+        select: 'destination' // To get the destination for the map
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!pickupRequests) {
+      return res.json({ success: true, requests: [], count: 0 });
+    }
+
+    const formattedRequests = pickupRequests.map(request => ({
+      id: request._id,
+      charity: request.charity ? request.charity.charityName : 'N/A',
+      pickupAddress: request.pickupAddress,
+      pickupCoordinates: request.pickupCoordinates.coordinates,
+      destinationCoordinates: request.donation ? request.donation.destination?.coordinates : null,
+      deliveryAddress: request.charity ? request.charity.address || request.charity.charityName : 'N/A',
+      items: request.items.map(item => `${item.description} (${item.quantity})`),
+      priority: request.priority,
+      status: request.status,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt
+    }));
+
+    const filteredRequests = formattedRequests.filter(request => {
+      const originalRequest = pickupRequests.find(pr => pr._id.equals(request.id));
+      return !!originalRequest.donation;
+    });
+
+    res.json({
+      success: true,
+      requests: filteredRequests,
+      count: filteredRequests.length
+    });
+
+  } catch (error) {
+    console.error('Get volunteer pickups error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch assigned pickup requests',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
