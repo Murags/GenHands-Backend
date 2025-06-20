@@ -1,6 +1,7 @@
 import { User, Donor, Volunteer, Admin, Charity } from '../models/User.js';
 import generateToken from '../utils/generateToken.js';
 import mongoose from 'mongoose';
+import { sendEmail } from '../utils/sendEmail.js';
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -220,39 +221,124 @@ const verifyUser = async (req, res) => {
         session.startTransaction();
 
         try {
-          const specificUpdate = {
-            verificationStatus: newStatus,
-            verifiedBy: req.user._id
-          };
-          await specificUser.constructor.findByIdAndUpdate(userId, { $set: specificUpdate }, { session });
+            const specificUpdate = {
+                verificationStatus: newStatus,
+                verifiedBy: req.user._id
+            };
+            await specificUser.constructor.findByIdAndUpdate(userId, { $set: specificUpdate }, { session });
 
-          const userUpdate = {
-            isVerified: action === 'approve'
-          };
-          await User.findByIdAndUpdate(userId, { $set: userUpdate }, { session });
+            const userUpdate = {
+                isVerified: action === 'approve'
+            };
+            await User.findByIdAndUpdate(userId, { $set: userUpdate }, { session });
 
-          await session.commitTransaction();
-          session.endSession();
+            await session.commitTransaction();
+            session.endSession();
 
-          const updatedUser = await User.findById(userId).lean();
-          const updatedSpecificUser = await specificUser.constructor.findById(userId).lean();
+            const updatedUser = await User.findById(userId).lean();
+            const updatedSpecificUser = await specificUser.constructor.findById(userId).lean();
 
-          res.json({
-            message: `User ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
-            user: {
-              _id: updatedUser._id,
-              name: updatedUser.name,
-              email: updatedUser.email,
-              role: updatedUser.role,
-              isVerified: updatedUser.isVerified,
-              verificationStatus: updatedSpecificUser.verificationStatus
+            // --- Send notification email to the user (charity or volunteer) ---
+            if (updatedUser.role === 'charity' || updatedUser.role === 'volunteer') {
+                let subject, text, html;
+
+                const greeting = `<h2 style="color:#005AA7;font-family:sans-serif;">Hello from Generous Hands!</h2>`;
+                const footer = `
+                    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+                    <p style="font-size:13px;color:#888;font-family:sans-serif;">
+                        This is an automated notification from <b>Generous Hands</b>.<br>
+                        If you have questions, reply to this email or contact our support team.<br>
+                        <span style="color:#005AA7;">Thank you for making a difference!</span>
+                    </p>
+                `;
+
+                if (updatedUser.role === 'charity') {
+                    if (newStatus === 'verified') {
+                        subject = '🎉 Your Charity Application Has Been Approved!';
+                        text = `Congratulations, your charity "${updatedSpecificUser.charityName}" has been approved! You can now access all features on Generous Hands.`;
+                        html = `
+                            ${greeting}
+                            <p style="font-size:16px;font-family:sans-serif;">
+                                <strong>Congratulations!</strong><br>
+                                Your charity <b>${updatedSpecificUser.charityName}</b> has been 
+                                <span style="color:green;font-weight:bold;">approved</span> by our team.<br>
+                            </p>
+                            ${footer}
+                        `;
+                    } else if (newStatus === 'rejected') {
+                        subject = 'Your Charity Application Has Been Rejected';
+                        text = `We regret to inform you that your charity "${updatedSpecificUser.charityName}" was not approved. Please contact support for more information.`;
+                        html = `
+                            ${greeting}
+                            <p style="font-size:16px;font-family:sans-serif;">
+                                <strong>We're sorry.</strong><br>
+                                Unfortunately, your charity <b>${updatedSpecificUser.charityName}</b> was 
+                                <span style="color:red;font-weight:bold;">not approved</span> at this time.<br>
+                                If you believe this is a mistake or need more information, please reply to this email or contact our support team.<br><br>
+                                <a href="mailto:jannyjonyo1@gmail.com" style="background:#005AA7;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:bold;">Contact Support</a>
+                            </p>
+                            ${footer}
+                        `;
+                    }
+                } else if (updatedUser.role === 'volunteer') {
+                    if (newStatus === 'verified') {
+                        subject = '🎉 Your Volunteer Application Has Been Approved!';
+                        text = `Congratulations, your volunteer application has been approved! You can now access all features on Generous Hands.`;
+                        html = `
+                            ${greeting}
+                            <p style="font-size:16px;font-family:sans-serif;">
+                                <strong>Congratulations!</strong><br>
+                                Your volunteer application has been 
+                                <span style="color:green;font-weight:bold;">approved</span> by our team.<br>
+                            </p>
+                            ${footer}
+                        `;
+                    } else if (newStatus === 'rejected') {
+                        subject = 'Your Volunteer Application Has Been Rejected';
+                        text = `We regret to inform you that your volunteer application was not approved. Please contact support for more information.`;
+                        html = `
+                            ${greeting}
+                            <p style="font-size:16px;font-family:sans-serif;">
+                                <strong>We're sorry.</strong><br>
+                                Unfortunately, your volunteer application was 
+                                <span style="color:red;font-weight:bold;">not approved</span> at this time.<br>
+                                If you believe this is a mistake or need more information, please reply to this email or contact our support team.<br><br>
+                                <a href="mailto:jannyjonyo1@gmail.com" style="background:#005AA7;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:bold;">Contact Support</a>
+                            </p>
+                            ${footer}
+                        `;
+                    }
+                }
+
+                try {
+                    await sendEmail({
+                        to: updatedUser.email,
+                        subject,
+                        text,
+                        html
+                    });
+                } catch (emailErr) {
+                    console.error('Failed to send status email:', emailErr);
+                }
             }
-          });
+            // --- End email notification ---
+
+            res.json({
+                message: `User ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
+                user: {
+                    _id: updatedUser._id,
+                    name: updatedUser.name,
+                    email: updatedUser.email,
+                    role: updatedUser.role,
+                    isVerified: updatedUser.isVerified,
+                    verificationStatus: updatedSpecificUser.verificationStatus
+                }
+            });
         } catch (error) {
-          await session.abortTransaction();
-          session.endSession();
-          console.error('Error during user verification transaction:', error);
-          res.status(500).json({ message: 'Server error during verification', error: error.message });
+            await session.abortTransaction();
+            session.endSession();
+            console.error('Error during user verification transaction:', error);
+            res.status(500).json({ message: 'Server error during verification', error: error.message });
         }
     } catch (error) {
         console.error('Error during user verification:', error);
