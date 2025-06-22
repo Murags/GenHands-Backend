@@ -43,4 +43,20 @@ const admin = (req, res, next) => {
     }
 };
 
-export { protect, admin };
+const volunteer = (req, res, next) => {
+    if (req.user && req.user.role === 'volunteer') {
+        next();
+    } else {
+        res.status(403).json({ message: 'Not authorized as a volunteer' });
+    }
+};
+
+const charity = (req, res, next) => {
+    if (req.user && req.user.role === 'charity') {
+        next();
+    } else {
+        res.status(403).json({ message: 'Not authorized as a charity' });
+    }
+};
+
+export { protect, admin, volunteer, charity };

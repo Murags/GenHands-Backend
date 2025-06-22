@@ -152,9 +152,16 @@ const donationSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['submitted', 'assigned', 'picked_up', 'delivered', 'cancelled'],
+    enum: ['submitted', 'assigned', 'picked_up', 'delivered', 'confirmed', 'cancelled'],
     default: 'submitted',
     index: true
+  },
+  thankYouNote: {
+    type: String,
+    maxlength: 2000
+  },
+  confirmedAt: {
+    type: Date
   }
 }, {
   timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' }

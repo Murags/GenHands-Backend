@@ -151,6 +151,15 @@ const CharitySchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+  neededCategories: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category'
+  }],
+  needsStatement: {
+    type: String,
+    maxlength: 1000,
+    trim: true
   }
 });
 const Charity = User.discriminator('Charity', CharitySchema);

@@ -1,10 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import mongoose from 'mongoose';
 import Donation from '../models/Donation.js';
-import { Charity } from '../models/User.js';
+import { Charity, User } from '../models/User.js';
 import Category from '../models/Category.js';
 import PickupRequest from '../models/PickupRequest.js';
 import { geocodeAddress, calculateDistance, validateCoordinates } from '../utils/geocoding.js';
+import { sendEmail } from '../utils/sendEmail.js';
 
 /**
  * @swagger
@@ -725,8 +726,8 @@ export const getVolunteerPickups = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    if (!pickupRequests) {
-      return res.json({ success: true, requests: [], count: 0 });
+    if (!pickupRequests || pickupRequests.length === 0) {
+      return res.status(200).json({ success: true, requests: [], count: 0 });
     }
 
     const formattedRequests = pickupRequests.map(request => ({
@@ -748,7 +749,7 @@ export const getVolunteerPickups = async (req, res) => {
       return !!originalRequest.donation;
     });
 
-    res.json({
+    res.status(200).json({
       success: true,
       requests: filteredRequests,
       count: filteredRequests.length
@@ -883,4 +884,87 @@ export const getMyDonations = async (req, res) => {
     console.error('Get my donations error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch your donations' });
   }
+};
+
+// @desc    Get all donations for the logged-in charity
+// @route   GET /api/donations/charity
+// @access  Private/Charity
+export const getCharityDonations = async (req, res) => {
+    try {
+        const donations = await Donation.find({ charityId: req.user._id })
+            .populate('donorId', 'name email')
+            .populate('donationItems.category', 'name')
+            .sort({ createdAt: -1 });
+
+        // Always return 200 with empty array if no donations found
+        res.status(200).json({ success: true, count: donations.length, data: donations || [] });
+
+    } catch (error) {
+        console.error('Error fetching charity donations:', error);
+        res.status(500).json({ success: false, message: 'Server error while fetching donations.' });
+    }
+};
+
+// @desc    Confirm delivery of a donation and send thank you note
+// @route   POST /api/donations/:id/confirm
+// @access  Private/Charity
+export const confirmDonationDelivery = async (req, res) => {
+    try {
+        const { thankYouNote } = req.body;
+        const donation = await Donation.findById(req.params.id);
+
+        if (!donation) {
+            return res.status(404).json({ success: false, message: 'Donation not found.' });
+        }
+
+        // Ensure the logged-in user is the recipient charity
+        if (donation.charityId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'You are not authorized to confirm this donation.' });
+        }
+
+        // Optionally, check if the donation has been marked as 'delivered' by a volunteer first
+        if (donation.status !== 'delivered') {
+            return res.status(400).json({ success: false, message: `This donation cannot be confirmed yet. Its current status is '${donation.status}'.` });
+        }
+
+        donation.status = 'confirmed';
+        donation.thankYouNote = thankYouNote || 'Thank you for your generous donation!';
+        donation.confirmedAt = Date.now();
+
+        await donation.save();
+
+        // Send thank you email to the donor
+        const donor = await User.findById(donation.donorId);
+        if (donor && donor.email) {
+            try {
+                const charity = await Charity.findById(donation.charityId)
+                await sendEmail({
+                    to: donor.email,
+                    subject: `A Thank You For Your Recent Donation to ${charity.charityName}!`,
+                    html: `
+                        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+                            <h2 style="color: #005AA7;">Dear ${donor.name},</h2>
+                            <p>We are writing to express our sincerest gratitude for your recent donation. The items you provided have been safely received by <b>${charity.charityName}</b>.</p>
+                            <h3 style="color: #333; border-bottom: 2px solid #005AA7; padding-bottom: 5px;">A Note From the Charity:</h3>
+                            <blockquote style="border-left: 4px solid #ddd; padding-left: 15px; margin-left: 0; font-style: italic;">
+                                <p>${donation.thankYouNote}</p>
+                            </blockquote>
+                            <p>Your support makes a huge difference in our community and allows us to continue our work. We are incredibly grateful for your generosity.</p>
+                            <p>Warmly,</p>
+                            <p><b>The Team at Generous Hands & ${charity.charityName}</b></p>
+                        </div>
+                    `
+                });
+            } catch (emailError) {
+                console.error(`Failed to send thank you email for donation ${donation._id}:`, emailError);
+                // Don't block the response for an email failure
+            }
+        }
+
+        res.json({ success: true, message: 'Donation confirmed and thank you note sent.', data: donation });
+
+    } catch (error) {
+        console.error('Error confirming donation:', error);
+        res.status(500).json({ success: false, message: 'Server error while confirming donation.' });
+    }
 };

@@ -6,9 +6,11 @@ import {
   getDonationById,
   searchAddresses,
   getVolunteerPickups,
-  getMyDonations
+  getMyDonations,
+  getCharityDonations,
+  confirmDonationDelivery
 } from '../controllers/donationController.js';
-import { protect } from '../middleware/authMiddleware.js';
+import { protect, admin, volunteer, charity } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -102,12 +104,21 @@ const router = express.Router();
  *         description: Server error
  */
 
+// Public & Donor Routes
 router.post('/', protect, submitDonation);
 router.get('/pickup-requests', getPickupRequests);
-router.get('/my-pickups', protect, getVolunteerPickups);
 router.patch('/pickup-requests/:id/status', protect, updatePickupStatus);
 router.get('/search-addresses', searchAddresses);
 router.get("/my-donations", protect, getMyDonations);
+
+// Volunteer Routes
+router.route('/my-pickups').get(protect, volunteer, getVolunteerPickups);
+
+// Charity Routes
+router.route('/charity').get(protect, charity, getCharityDonations);
+router.route('/:id/confirm').post(protect, charity, confirmDonationDelivery);
+
+// This must be after other specific GET routes
 router.get('/:id', protect, getDonationById);
 
 export default router;
