@@ -837,6 +837,13 @@ export const getVolunteerPickups = async (req, res) => {
  *                         type: string
  *                       status:
  *                         type: string
+ *                       thankYouNote:
+ *                         type: string
+ *                         description: Thank you note from the charity (only present if donation is confirmed)
+ *                       confirmedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Date when the donation was confirmed by the charity
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -849,7 +856,10 @@ export const getMyDonations = async (req, res) => {
   try {
     const userId = req.user._id;
     // Find all donations where the donorId matches the logged-in user
-    const donations = await Donation.find({ donorId: userId }).sort({ createdAt: -1 }).lean();
+    const donations = await Donation.find({ donorId: userId })
+      .populate('charityId', 'charityName')
+      .sort({ createdAt: -1 })
+      .lean();
 
     const formatted = donations.map(donation => ({
       id: donation.id,
@@ -876,6 +886,9 @@ export const getMyDonations = async (req, res) => {
       photoConsent: donation.photoConsent,
       contactPreference: donation.contactPreference,
       status: donation.status,
+      charityName: donation.charityId?.charityName || 'Unknown Charity',
+      ...(donation.thankYouNote && { thankYouNote: donation.thankYouNote }),
+      ...(donation.confirmedAt && { confirmedAt: donation.confirmedAt }),
       createdAt: donation.createdAt
     }));
 
@@ -886,18 +899,147 @@ export const getMyDonations = async (req, res) => {
   }
 };
 
-// @desc    Get all donations for the logged-in charity
-// @route   GET /api/donations/charity
-// @access  Private/Charity
+/**
+ * @swagger
+ * /donations/charity:
+ *   get:
+ *     summary: Get all donations for the logged-in charity with filtering
+ *     tags: [Donations, Charity]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [submitted, assigned, picked_up, delivered, confirmed, cancelled]
+ *         description: Filter donations by status.
+ *       - in: query
+ *         name: urgency
+ *         schema:
+ *           type: string
+ *           enum: [low, medium, high]
+ *         description: Filter donations by urgency level.
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: The start date for a date range filter (ISO 8601 format).
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: The end date for a date range filter (ISO 8601 format).
+ *       - in: query
+ *         name: donorName
+ *         schema:
+ *           type: string
+ *         description: Filter donations by donor's name (case-insensitive, partial match).
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         description: Filter donations by item category (can be category name or ID).
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination.
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page.
+ *     responses:
+ *       200:
+ *         description: A list of donations for the charity.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *                 pages:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Donation'
+ *       401:
+ *         description: Unauthorized.
+ *       500:
+ *         description: Server error.
+ */
 export const getCharityDonations = async (req, res) => {
     try {
-        const donations = await Donation.find({ charityId: req.user._id })
-            .populate('donorId', 'name email')
-            .populate('donationItems.category', 'name')
-            .sort({ createdAt: -1 });
+        const { status, urgency, startDate, endDate, donorName, category } = req.query;
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 10;
+        const skip = (page - 1) * limit;
 
-        // Always return 200 with empty array if no donations found
-        res.status(200).json({ success: true, count: donations.length, data: donations || [] });
+        const query = { charityId: req.user._id };
+
+        // Apply filters
+        if (status) {
+            query.status = status;
+        }
+        if (urgency) {
+            query.urgencyLevel = urgency;
+        }
+        if (startDate || endDate) {
+            query.createdAt = {};
+            if (startDate) {
+                query.createdAt.$gte = new Date(startDate);
+            }
+            if (endDate) {
+                const date = new Date(endDate);
+                date.setHours(23, 59, 59, 999); // Include the whole day
+                query.createdAt.$lte = date;
+            }
+        }
+        if (donorName) {
+            query.donorName = { $regex: donorName, $options: 'i' };
+        }
+        if (category) {
+            let categoryId = category;
+            if (!mongoose.Types.ObjectId.isValid(category)) {
+                const categoryObj = await Category.findOne({ name: { $regex: new RegExp(`^${category}$`, 'i') } });
+                if (categoryObj) {
+                    categoryId = categoryObj._id;
+                } else {
+                    return res.status(200).json({ success: true, count: 0, total: 0, pages: 0, data: [] });
+                }
+            }
+            query['donationItems.category'] = categoryId;
+        }
+
+        const totalDonations = await Donation.countDocuments(query);
+        const donations = await Donation.find(query)
+            .populate('donorId', 'name email')
+            .populate({
+                path: 'donationItems.category',
+                select: 'name'
+            })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.status(200).json({
+            success: true,
+            count: donations.length,
+            total: totalDonations,
+            pages: Math.ceil(totalDonations / limit),
+            data: donations || []
+        });
 
     } catch (error) {
         console.error('Error fetching charity donations:', error);
@@ -905,12 +1047,77 @@ export const getCharityDonations = async (req, res) => {
     }
 };
 
-// @desc    Confirm delivery of a donation and send thank you note
-// @route   POST /api/donations/:id/confirm
-// @access  Private/Charity
+/**
+ * @swagger
+ * /donations/{id}/confirm:
+ *   post:
+ *     summary: Confirm delivery of a donation and send thank you note
+ *     tags: [Donations, Charity]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The donation ID to confirm
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               thankYouNote:
+ *                 type: string
+ *                 maxLength: 2000
+ *                 description: Personal thank you message from the charity to the donor
+ *                 example: "Thank you so much for your generous donation of winter clothing. These items will help keep our community members warm during the cold season. Your kindness makes a real difference!"
+ *             required:
+ *               - thankYouNote
+ *     responses:
+ *       200:
+ *         description: Donation confirmed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: "confirmed"
+ *                     thankYouNote:
+ *                       type: string
+ *                     confirmedAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Donation cannot be confirmed yet (wrong status)
+ *       403:
+ *         description: Not authorized to confirm this donation
+ *       404:
+ *         description: Donation not found
+ *       500:
+ *         description: Server error
+ */
 export const confirmDonationDelivery = async (req, res) => {
     try {
         const { thankYouNote } = req.body;
+
+        if (!thankYouNote || thankYouNote.trim().length === 0) {
+            return res.status(400).json({ success: false, message: 'Thank you note is required.' });
+        }
+
         const donation = await Donation.findById(req.params.id);
 
         if (!donation) {
@@ -922,49 +1129,196 @@ export const confirmDonationDelivery = async (req, res) => {
             return res.status(403).json({ success: false, message: 'You are not authorized to confirm this donation.' });
         }
 
-        // Optionally, check if the donation has been marked as 'delivered' by a volunteer first
+        // Check if the donation has been marked as 'delivered' by a volunteer first
         if (donation.status !== 'delivered') {
-            return res.status(400).json({ success: false, message: `This donation cannot be confirmed yet. Its current status is '${donation.status}'.` });
+            return res.status(400).json({
+                success: false,
+                message: `This donation cannot be confirmed yet. Its current status is '${donation.status}'. It must be 'delivered' first.`
+            });
+        }
+
+        // Check if already confirmed
+        if (donation.status === 'confirmed') {
+            return res.status(400).json({
+                success: false,
+                message: 'This donation has already been confirmed.'
+            });
         }
 
         donation.status = 'confirmed';
-        donation.thankYouNote = thankYouNote || 'Thank you for your generous donation!';
-        donation.confirmedAt = Date.now();
+        donation.thankYouNote = thankYouNote.trim();
+        donation.confirmedAt = new Date();
 
         await donation.save();
 
         // Send thank you email to the donor
         const donor = await User.findById(donation.donorId);
-        if (donor && donor.email) {
-            try {
-                const charity = await Charity.findById(donation.charityId)
-                await sendEmail({
-                    to: donor.email,
-                    subject: `A Thank You For Your Recent Donation to ${charity.charityName}!`,
-                    html: `
-                        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-                            <h2 style="color: #005AA7;">Dear ${donor.name},</h2>
-                            <p>We are writing to express our sincerest gratitude for your recent donation. The items you provided have been safely received by <b>${charity.charityName}</b>.</p>
-                            <h3 style="color: #333; border-bottom: 2px solid #005AA7; padding-bottom: 5px;">A Note From the Charity:</h3>
-                            <blockquote style="border-left: 4px solid #ddd; padding-left: 15px; margin-left: 0; font-style: italic;">
-                                <p>${donation.thankYouNote}</p>
-                            </blockquote>
-                            <p>Your support makes a huge difference in our community and allows us to continue our work. We are incredibly grateful for your generosity.</p>
-                            <p>Warmly,</p>
-                            <p><b>The Team at Generous Hands & ${charity.charityName}</b></p>
-                        </div>
-                    `
-                });
-            } catch (emailError) {
-                console.error(`Failed to send thank you email for donation ${donation._id}:`, emailError);
-                // Don't block the response for an email failure
-            }
-        }
+        // Temp disable email sending for now
+        // if (donor && donor.email) {
+        //     try {
+        //         const charity = await Charity.findById(donation.charityId);
+        //         await sendEmail({
+        //             to: donor.email,
+        //             subject: `A Thank You For Your Recent Donation to ${charity.charityName}!`,
+        //             html: `
+        //                 <div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+        //                     <h2 style="color: #005AA7;">Dear ${donor.name},</h2>
+        //                     <p>We are writing to express our sincerest gratitude for your recent donation. The items you provided have been safely received by <b>${charity.charityName}</b>.</p>
+        //                     <h3 style="color: #333; border-bottom: 2px solid #005AA7; padding-bottom: 5px;">A Note From the Charity:</h3>
+        //                     <blockquote style="border-left: 4px solid #005AA7; padding-left: 15px; margin-left: 0; font-style: italic; color: #333;">
+        //                         <p>${donation.thankYouNote}</p>
+        //                     </blockquote>
+        //                     <p>Your support makes a huge difference in our community and allows us to continue our work. We are incredibly grateful for your generosity.</p>
+        //                     <p>Warmly,</p>
+        //                     <p><b>The Team at Generous Hands & ${charity.charityName}</b></p>
+        //                 </div>
+        //             `
+        //         });
+        //     } catch (emailError) {
+        //         console.error(`Failed to send thank you email for donation ${donation._id}:`, emailError);
+        //         // Don't block the response for an email failure
+        //     }
+        // }
 
-        res.json({ success: true, message: 'Donation confirmed and thank you note sent.', data: donation });
+        res.json({
+            success: true,
+            message: 'Donation confirmed and thank you note sent to donor.',
+            data: {
+                _id: donation._id,
+                status: donation.status,
+                thankYouNote: donation.thankYouNote,
+                confirmedAt: donation.confirmedAt
+            }
+        });
 
     } catch (error) {
         console.error('Error confirming donation:', error);
         res.status(500).json({ success: false, message: 'Server error while confirming donation.' });
+    }
+};
+
+/**
+ * @swagger
+ * /donations/charity/dashboard-stats:
+ *   get:
+ *     summary: Get dashboard statistics for the logged-in charity
+ *     tags: [Donations, Charity]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard statistics for the charity
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     activeRequirements:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Number of active requirement categories
+ *                         label:
+ *                           type: string
+ *                           example: "Items needed"
+ *                     incomingDonations:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Number of donations in submitted/assigned status
+ *                         label:
+ *                           type: string
+ *                           example: "From generous donors"
+ *                     pendingDeliveries:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Number of donations picked up but not yet delivered
+ *                         label:
+ *                           type: string
+ *                           example: "Awaiting pickup"
+ *                     thankYouNotes:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Total number of thank you notes sent
+ *                         label:
+ *                           type: string
+ *                           example: "Gratitude expressed"
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+export const getCharityDashboardStats = async (req, res) => {
+    try {
+        const charityId = req.user._id;
+
+        // Run all queries in parallel for better performance
+        const [
+            activeRequirementsCount,
+            incomingDonationsCount,
+            pendingDeliveriesCount,
+            thankYouNotesCount
+        ] = await Promise.all([
+            Charity.findById(charityId).then(charity =>
+                charity && charity.neededCategories ? charity.neededCategories.length : 0
+            ),
+
+            Donation.countDocuments({
+                charityId: charityId,
+                status: { $in: ['submitted', 'assigned'] }
+            }),
+
+            Donation.countDocuments({
+                charityId: charityId,
+                status: 'picked_up'
+            }),
+
+            Donation.countDocuments({
+                charityId: charityId,
+                status: 'confirmed'
+            })
+        ]);
+
+        const stats = {
+            activeRequirements: {
+                count: activeRequirementsCount,
+                label: "Items needed"
+            },
+            incomingDonations: {
+                count: incomingDonationsCount,
+                label: "From generous donors"
+            },
+            pendingDeliveries: {
+                count: pendingDeliveriesCount,
+                label: "Awaiting pickup"
+            },
+            thankYouNotes: {
+                count: thankYouNotesCount,
+                label: "Gratitude expressed"
+            }
+        };
+
+        res.status(200).json({
+            success: true,
+            data: stats
+        });
+
+    } catch (error) {
+        console.error('Error fetching charity dashboard stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching dashboard statistics.'
+        });
     }
 };

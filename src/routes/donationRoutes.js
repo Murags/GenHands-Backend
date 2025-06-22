@@ -8,7 +8,8 @@ import {
   getVolunteerPickups,
   getMyDonations,
   getCharityDonations,
-  confirmDonationDelivery
+  confirmDonationDelivery,
+  getCharityDashboardStats
 } from '../controllers/donationController.js';
 import { protect, admin, volunteer, charity } from '../middleware/authMiddleware.js';
 
@@ -116,6 +117,7 @@ router.route('/my-pickups').get(protect, volunteer, getVolunteerPickups);
 
 // Charity Routes
 router.route('/charity').get(protect, charity, getCharityDonations);
+router.route('/charity/dashboard-stats').get(protect, charity, getCharityDashboardStats);
 router.route('/:id/confirm').post(protect, charity, confirmDonationDelivery);
 
 // This must be after other specific GET routes
