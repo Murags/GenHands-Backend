@@ -260,7 +260,7 @@ const verifyUser = async (req, res) => {
                             ${greeting}
                             <p style="font-size:16px;font-family:sans-serif;">
                                 <strong>Congratulations!</strong><br>
-                                Your charity <b>${updatedSpecificUser.charityName}</b> has been 
+                                Your charity <b>${updatedSpecificUser.charityName}</b> has been
                                 <span style="color:green;font-weight:bold;">approved</span> by our team.<br>
                             </p>
                             ${footer}
@@ -272,7 +272,7 @@ const verifyUser = async (req, res) => {
                             ${greeting}
                             <p style="font-size:16px;font-family:sans-serif;">
                                 <strong>We're sorry.</strong><br>
-                                Unfortunately, your charity <b>${updatedSpecificUser.charityName}</b> was 
+                                Unfortunately, your charity <b>${updatedSpecificUser.charityName}</b> was
                                 <span style="color:red;font-weight:bold;">not approved</span> at this time.<br>
                                 If you believe this is a mistake or need more information, please reply to this email or contact our support team.<br><br>
                                 <a href="mailto:jannyjonyo1@gmail.com" style="background:#005AA7;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:bold;">Contact Support</a>
@@ -288,7 +288,7 @@ const verifyUser = async (req, res) => {
                             ${greeting}
                             <p style="font-size:16px;font-family:sans-serif;">
                                 <strong>Congratulations!</strong><br>
-                                Your volunteer application has been 
+                                Your volunteer application has been
                                 <span style="color:green;font-weight:bold;">approved</span> by our team.<br>
                             </p>
                             ${footer}
@@ -300,7 +300,7 @@ const verifyUser = async (req, res) => {
                             ${greeting}
                             <p style="font-size:16px;font-family:sans-serif;">
                                 <strong>We're sorry.</strong><br>
-                                Unfortunately, your volunteer application was 
+                                Unfortunately, your volunteer application was
                                 <span style="color:red;font-weight:bold;">not approved</span> at this time.<br>
                                 If you believe this is a mistake or need more information, please reply to this email or contact our support team.<br><br>
                                 <a href="mailto:jannyjonyo1@gmail.com" style="background:#005AA7;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:bold;">Contact Support</a>
@@ -454,4 +454,68 @@ const getCharities = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers, getCharities };
+// @desc    Get current user profile
+// @route   GET /api/auth/me
+// @access  Private
+const getMe = async (req, res) => {
+    try {
+        // req.user is set by the protect middleware
+        const userId = req.user._id;
+        const userRole = req.user.role;
+
+        let user;
+
+        // Get user with role-specific details
+        switch (userRole) {
+            case 'donor':
+                user = await Donor.findById(userId).select('-password');
+                break;
+            case 'volunteer':
+                user = await Volunteer.findById(userId).select('-password');
+                break;
+            case 'charity':
+                user = await Charity.findById(userId)
+                    .select('-password')
+                    .populate('neededCategories', 'name description');
+                break;
+            case 'admin':
+                user = await Admin.findById(userId).select('-password');
+                break;
+            default:
+                user = await User.findById(userId).select('-password');
+        }
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Add additional computed fields
+        const userResponse = {
+            ...user.toObject(),
+            isVerified: user.isVerified,
+            userType: user.userType
+        };
+
+        // Add role-specific computed fields
+        if (userRole === 'volunteer' || userRole === 'charity') {
+            userResponse.verificationStatus = user.verificationStatus;
+            userResponse.isPending = user.verificationStatus === 'pending';
+            userResponse.isRejected = user.verificationStatus === 'rejected';
+        }
+
+        res.json({
+            success: true,
+            data: userResponse
+        });
+
+    } catch (error) {
+        console.error('Error fetching current user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error fetching user profile',
+            error: error.message
+        });
+    }
+};
+
+export { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers, getCharities, getMe };
