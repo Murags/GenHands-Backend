@@ -763,3 +763,124 @@ export const getVolunteerPickups = async (req, res) => {
     });
   }
 };
+
+/**
+ * @swagger
+ * /donations/my-donations:
+ *   get:
+ *     summary: Get all donations submitted by the logged-in user
+ *     tags: [Donations]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of the user's donations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 donations:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       donorName:
+ *                         type: string
+ *                       donorEmail:
+ *                         type: string
+ *                       donorPhone:
+ *                         type: string
+ *                       organizationName:
+ *                         type: string
+ *                       organizationType:
+ *                         type: string
+ *                       pickupAddress:
+ *                         type: string
+ *                       accessNotes:
+ *                         type: string
+ *                       donationItems:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             category:
+ *                               type: string
+ *                             description:
+ *                               type: string
+ *                             quantity:
+ *                               type: string
+ *                             condition:
+ *                               type: string
+ *                       totalWeight:
+ *                         type: string
+ *                       requiresRefrigeration:
+ *                         type: boolean
+ *                       fragileItems:
+ *                         type: boolean
+ *                       deliveryInstructions:
+ *                         type: string
+ *                       availabilityType:
+ *                         type: string
+ *                       urgencyLevel:
+ *                         type: string
+ *                       additionalNotes:
+ *                         type: string
+ *                       photoConsent:
+ *                         type: boolean
+ *                       contactPreference:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+export const getMyDonations = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    // Find all donations where the donorId matches the logged-in user
+    const donations = await Donation.find({ donorId: userId }).sort({ createdAt: -1 }).lean();
+
+    const formatted = donations.map(donation => ({
+      id: donation.id,
+      donorName: donation.donorName,
+      donorEmail: donation.donorEmail,
+      donorPhone: donation.donorPhone,
+      organizationName: donation.organizationName,
+      organizationType: donation.organizationType,
+      pickupAddress: donation.pickupAddress,
+      accessNotes: donation.accessNotes,
+      donationItems: donation.donationItems.map(item => ({
+        category: item.category,
+        description: item.description,
+        quantity: item.quantity,
+        condition: item.condition
+      })),
+      totalWeight: donation.totalWeight,
+      requiresRefrigeration: donation.requiresRefrigeration,
+      fragileItems: donation.fragileItems,
+      deliveryInstructions: donation.deliveryInstructions,
+      availabilityType: donation.availabilityType,
+      urgencyLevel: donation.urgencyLevel,
+      additionalNotes: donation.additionalNotes,
+      photoConsent: donation.photoConsent,
+      contactPreference: donation.contactPreference,
+      status: donation.status,
+      createdAt: donation.createdAt
+    }));
+
+    res.json({ success: true, donations: formatted });
+  } catch (error) {
+    console.error('Get my donations error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch your donations' });
+  }
+};
