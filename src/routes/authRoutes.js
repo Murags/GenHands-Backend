@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers, getCharities } from '../controllers/authController.js';
+import { registerUser, loginUser, verifyUser, getUsersPendingVerification, getUsers, getCharities, getMe } from '../controllers/authController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import volunteerUpload from '../middleware/uploads/volunteerDocs/volunteerDocs.js';
 import charityUpload from '../middleware/uploads/charityDocs/charityDocs.js';
@@ -408,5 +408,116 @@ router.get('/pending-verification', getUsersPendingVerification); /* Add protect
 router.put('/verify/:id', protect, admin, verifyUser);
 
 router.route('/charities').get(getCharities);
+
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Get current user profile
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: "507f1f77bcf86cd799439011"
+ *                     name:
+ *                       type: string
+ *                       example: "John Doe"
+ *                     email:
+ *                       type: string
+ *                       example: "john@example.com"
+ *                     role:
+ *                       type: string
+ *                       enum: [donor, volunteer, charity, admin]
+ *                       example: "donor"
+ *                     userType:
+ *                       type: string
+ *                       example: "Donor"
+ *                     isVerified:
+ *                       type: boolean
+ *                       example: true
+ *                     phoneNumber:
+ *                       type: string
+ *                       example: "+1234567890"
+ *                     address:
+ *                       type: string
+ *                       example: "123 Main St, City, State"
+ *                     location:
+ *                       type: object
+ *                       properties:
+ *                         type:
+ *                           type: string
+ *                           example: "Point"
+ *                         coordinates:
+ *                           type: array
+ *                           items:
+ *                             type: number
+ *                           example: [-73.856077, 40.848447]
+ *                     verificationStatus:
+ *                       type: string
+ *                       enum: [pending, verified, rejected, in_progress]
+ *                       example: "verified"
+ *                       description: "Only present for volunteers and charities"
+ *                     isPending:
+ *                       type: boolean
+ *                       example: false
+ *                       description: "Only present for volunteers and charities"
+ *                     isRejected:
+ *                       type: boolean
+ *                       example: false
+ *                       description: "Only present for volunteers and charities"
+ *                     charityName:
+ *                       type: string
+ *                       example: "Food Bank Central"
+ *                       description: "Only present for charities"
+ *                     neededCategories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                       description: "Only present for charities"
+ *                     needsStatement:
+ *                       type: string
+ *                       example: "We urgently need non-perishable food items"
+ *                       description: "Only present for charities"
+ *                     transportationMode:
+ *                       type: string
+ *                       enum: [car, bicycle, motorcycle, public_transport, walking, other]
+ *                       example: "car"
+ *                       description: "Only present for volunteers"
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/me', protect, getMe);
 
 export default router;

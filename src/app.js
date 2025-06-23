@@ -4,6 +4,9 @@ import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
 import donationRoutes from './routes/donationRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
+import availabilityRoutes from './routes/availabilityRoutes.js';
+import charityRoutes from './routes/charityRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import path from 'path';
@@ -52,7 +55,10 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/donations', donationRoutes);
+app.use('/api/availability', availabilityRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/charity', charityRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
