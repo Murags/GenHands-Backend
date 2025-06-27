@@ -1,0 +1,88 @@
+```mermaid
+classDiagram
+    %% Inheritance relationships
+    User <|-- Donor : Inheritance
+    User <|-- Volunteer : Inheritance
+    User <|-- Charity : Inheritance
+    User <|-- Admin : Inheritance
+
+    User : +String name
+    User : +String email
+    User : +String password
+    User : +String role
+    User : +Boolean isVerified
+    User : +matchPassword()
+    User : +save()
+
+    class Donor{
+        +String phoneNumber
+        +String location
+        +Number totalDonations
+        +createDonation()
+        +viewDonations()
+    }
+
+    class Volunteer{
+        +String[] skills
+        +String verificationStatus
+        +Boolean isActive
+        +acceptPickup()
+        +updateStatus()
+    }
+
+    class Charity{
+        +String charityName
+        +String registrationNumber
+        +String verificationStatus
+        +Object location
+        +confirmDonation()
+        +addThankYouNote()
+    }
+
+    class Admin{
+        +String[] permissions
+        +generateReports()
+        +verifyUsers()
+        +viewAnalytics()
+    }
+
+    class Donation{
+        +ObjectId donorId
+        +ObjectId charityId
+        +Object[] donationItems
+        +String status
+        +String urgencyLevel
+        +String pickupAddress
+        +save()
+        +updateStatus()
+    }
+
+    class PickupRequest{
+        +ObjectId donationId
+        +ObjectId volunteer
+        +String status
+        +String priority
+        +Date scheduledDate
+        +assignVolunteer()
+        +updateStatus()
+    }
+
+    class Category{
+        +String name
+        +String description
+        +Boolean isActive
+        +save()
+        +findAll()
+    }
+
+    %% Association relationships
+    Donor "1" --> "many" Donation : creates
+    Charity "1" --> "many" Donation : receives
+    Volunteer "1" --> "many" PickupRequest : handles
+    Donation "1" --> "1" PickupRequest : generates
+    Category "1" --> "many" Donation : categorizes
+    Donation "1" --> User : donorId
+    Donation "1" --> User : charityId
+    PickupRequest "1" --> Donation : donationId
+    PickupRequest "1" --> User : volunteer
+```

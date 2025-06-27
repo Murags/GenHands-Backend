@@ -1,0 +1,87 @@
+// GenHands Donation Management Platform - Database Schema
+// Use this at https://dbdiagram.io/
+
+Table users {
+  _id ObjectId [primary key]
+  name varchar(255) [not null]
+  email varchar(255) [unique, not null]
+  password varchar(255) [not null]
+  role enum('donor', 'volunteer', 'charity', 'admin') [not null]
+  userType varchar(50)
+  isVerified boolean [default: false]
+  verificationStatus enum('pending', 'in_progress', 'verified', 'rejected')
+  verifiedBy ObjectId [ref: > users._id]
+  phoneNumber varchar(20)
+  location json
+  charityName varchar(255)
+  registrationNumber varchar(100)
+  contactFirstName varchar(100)
+  contactLastName varchar(100)
+  contactEmail varchar(255)
+  contactPhone varchar(20)
+  category varchar(100)
+  neededCategories array
+  verificationDocuments array
+  needsStatement text
+  skills array
+  availability array
+  isActive boolean [default: true]
+  completedPickups integer [default: 0]
+  totalDonations integer [default: 0]
+  totalDonationsReceived integer [default: 0]
+  rating decimal(2,1)
+  permissions array
+  lastLogin timestamp
+  lastAccessDate timestamp
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp [default: `now()`]
+}
+
+Table donations {
+  _id ObjectId [primary key]
+  donorId ObjectId [ref: > users._id, not null]
+  charityId ObjectId [ref: > users._id, not null]
+  status enum('submitted', 'assigned', 'confirmed', 'picked_up', 'delivered', 'cancelled') [default: 'submitted']
+  urgencyLevel enum('low', 'medium', 'high', 'urgent') [default: 'medium']
+  donationItems array
+  pickupAddress text [not null]
+  pickupLocation json
+  specialInstructions text
+  thankYouNote text
+  confirmedAt timestamp
+  confirmedBy ObjectId [ref: > users._id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp [default: `now()`]
+}
+
+Table pickup_requests {
+  _id ObjectId [primary key]
+  donationId ObjectId [ref: > donations._id, not null]
+  volunteer ObjectId [ref: > users._id]
+  charity ObjectId [ref: > users._id, not null]
+  status enum('available', 'accepted', 'en_route_pickup', 'arrived_pickup', 'picked_up', 'en_route_delivery', 'delivered', 'failed') [default: 'available']
+  priority enum('low', 'medium', 'high', 'urgent') [default: 'medium']
+  scheduledDate timestamp
+  notes text
+  metadata json
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp [default: `now()`]
+}
+
+Table categories {
+  _id ObjectId [primary key]
+  name varchar(100) [unique, not null]
+  description text
+  icon varchar(100)
+  isActive boolean [default: true]
+  sortOrder integer [default: 0]
+  createdAt timestamp [default: `now()`]
+}
+
+Ref: donations.donorId > users._id [delete: cascade]
+Ref: donations.charityId > users._id [delete: cascade]
+Ref: donations.confirmedBy > users._id [delete: set null]
+Ref: pickup_requests.donationId > donations._id [delete: cascade]
+Ref: pickup_requests.volunteer > users._id [delete: set null]
+Ref: pickup_requests.charity > users._id [delete: cascade]
+Ref: users.verifiedBy > users._id [delete: set null]
