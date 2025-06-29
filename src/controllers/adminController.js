@@ -1565,3 +1565,660 @@ const getVolunteerEfficiencyData = async () => {
         }
     };
 };
+
+// @desc    Get admin dashboard overview
+// @route   GET /api/admin/dashboard/overview
+// @access  Private/Admin
+const getDashboardOverview = async (req, res) => {
+    try {
+        const [
+            totalDonations,
+            activeDonations,
+            completedDonations,
+            totalUsers,
+            activeVolunteers,
+            verifiedCharities,
+            pendingPickups,
+            completedPickups
+        ] = await Promise.all([
+            Donation.countDocuments(),
+            Donation.countDocuments({ status: { $in: ['submitted', 'assigned'] } }),
+            Donation.countDocuments({ status: 'delivered' }),
+            User.countDocuments(),
+            User.countDocuments({ role: 'volunteer', verificationStatus: 'verified', isActive: true }),
+            User.countDocuments({ role: 'charity', verificationStatus: 'verified' }),
+            PickupRequest.countDocuments({ status: { $in: ['available', 'accepted', 'en_route_pickup', 'arrived_pickup', 'picked_up', 'en_route_delivery'] } }),
+            PickupRequest.countDocuments({ status: 'delivered' })
+        ]);
+
+        // Calculate growth percentages (mock data - you can implement actual historical comparison)
+        const overview = {
+            totalDonations: {
+                count: totalDonations,
+                growth: 12.5 // Percentage growth
+            },
+            activeDonations: {
+                count: activeDonations,
+                growth: 8.3
+            },
+            completedDonations: {
+                count: completedDonations,
+                growth: 15.7
+            },
+            totalUsers: {
+                count: totalUsers,
+                growth: 6.2
+            },
+            activeVolunteers: {
+                count: activeVolunteers,
+                growth: 9.1
+            },
+            verifiedCharities: {
+                count: verifiedCharities,
+                growth: 4.8
+            },
+            pendingPickups: {
+                count: pendingPickups,
+                growth: -2.3 // Negative growth is good for pending items
+            },
+            completedPickups: {
+                count: completedPickups,
+                growth: 18.4
+            }
+        };
+
+        res.json({
+            success: true,
+            data: overview
+        });
+
+    } catch (error) {
+        console.error('Error fetching dashboard overview:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error fetching dashboard overview',
+            error: error.message
+        });
+    }
+};
+
+// @desc    Get supply and demand analysis
+// @route   GET /api/admin/dashboard/supply-demand
+// @access  Private/Admin
+const getSupplyDemandAnalysis = async (req, res) => {
+    try {
+        const { timeframe = '30d' } = req.query;
+
+        let dateFilter = {};
+        const now = new Date();
+
+        switch (timeframe) {
+            case '7d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '30d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '90d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '1y':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) } };
+                break;
+            default:
+                dateFilter = {};
+        }
+
+        // Get all categories
+        const categories = await Category.find({});
+        const categoryMap = {};
+        categories.forEach(cat => {
+            categoryMap[cat._id.toString()] = cat.name;
+        });
+
+        // Aggregate donations by category (items donated)
+        const donationsByCategory = await Donation.aggregate([
+            { $match: dateFilter },
+            { $unwind: '$donationItems' },
+            {
+                $group: {
+                    _id: '$donationItems.category',
+                    totalDonated: { $sum: 1 }
+                }
+            },
+            { $sort: { totalDonated: -1 } }
+        ]);
+
+        // Mock charity needs data (in a real system, you'd have a needs collection)
+        // This simulates what charities are requesting vs what's being donated
+        const mockCharityNeeds = [
+            { categoryId: categories.find(c => c.name === 'Clothing')?._id, itemsNeeded: 1200 },
+            { categoryId: categories.find(c => c.name === 'Food Items')?._id, itemsNeeded: 800 },
+            { categoryId: categories.find(c => c.name === 'Electronics')?._id, itemsNeeded: 300 },
+            { categoryId: categories.find(c => c.name === 'Furniture')?._id, itemsNeeded: 450 },
+            { categoryId: categories.find(c => c.name === 'Books & Educational')?._id, itemsNeeded: 600 },
+            { categoryId: categories.find(c => c.name === 'Medical Supplies')?._id, itemsNeeded: 180 },
+            { categoryId: categories.find(c => c.name === 'Toys & Games')?._id, itemsNeeded: 350 },
+            { categoryId: categories.find(c => c.name === 'Kitchen Items')?._id, itemsNeeded: 280 },
+            { categoryId: categories.find(c => c.name === 'Blankets & Bedding')?._id, itemsNeeded: 400 },
+            { categoryId: categories.find(c => c.name === 'Personal Care')?._id, itemsNeeded: 150 }
+        ];
+
+        // Combine supply and demand data
+        const supplyDemandData = [];
+        const categoryStats = {
+            totalGap: 0,
+            categoriesWithUnmetNeeds: 0,
+            categoriesWithSurplus: 0,
+            biggestGaps: []
+        };
+
+        for (const need of mockCharityNeeds) {
+            if (!need.categoryId) continue;
+
+            const categoryId = need.categoryId.toString();
+            const categoryName = categoryMap[categoryId] || 'Unknown';
+
+            const donation = donationsByCategory.find(d => d._id?.toString() === categoryId) || { totalDonated: 0 };
+            const itemsDonated = donation.totalDonated || 0;
+            const itemsNeeded = need.itemsNeeded;
+            const gap = itemsNeeded - itemsDonated;
+
+            supplyDemandData.push({
+                category: categoryName,
+                itemsNeeded,
+                itemsDonated,
+                gap,
+                fulfillmentRate: itemsNeeded > 0 ? Math.round((itemsDonated / itemsNeeded) * 100) : 100
+            });
+
+            // Update statistics
+            categoryStats.totalGap += Math.max(gap, 0);
+            if (gap > 0) {
+                categoryStats.categoriesWithUnmetNeeds++;
+                categoryStats.biggestGaps.push({ category: categoryName, gap });
+            } else if (gap < 0) {
+                categoryStats.categoriesWithSurplus++;
+            }
+        }
+
+        // Sort biggest gaps and take top 3
+        categoryStats.biggestGaps = categoryStats.biggestGaps
+            .sort((a, b) => b.gap - a.gap)
+            .slice(0, 3);
+
+        // Sort supply demand data by gap (highest first)
+        supplyDemandData.sort((a, b) => b.gap - a.gap);
+
+        res.json({
+            success: true,
+            data: {
+                supplyDemandData,
+                keyInsights: {
+                    totalGap: categoryStats.totalGap,
+                    categoriesWithUnmetNeeds: categoryStats.categoriesWithUnmetNeeds,
+                    categoriesWithSurplus: categoryStats.categoriesWithSurplus,
+                    biggestGaps: categoryStats.biggestGaps
+                },
+                timeframe,
+                generatedAt: new Date()
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching supply demand analysis:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error fetching supply demand analysis',
+            error: error.message
+        });
+    }
+};
+
+// @desc    Get operational metrics for dashboard
+// @route   GET /api/admin/dashboard/operational-metrics
+// @access  Private/Admin
+const getOperationalMetrics = async (req, res) => {
+    try {
+        const [
+            activeItemListings,
+            pendingPickups,
+            pendingDeliveries,
+            activeVolunteers,
+            recentDonations,
+            recentPickups
+        ] = await Promise.all([
+            Donation.countDocuments({ status: { $in: ['submitted', 'assigned'] } }),
+            PickupRequest.countDocuments({ status: { $in: ['available', 'accepted', 'en_route_pickup', 'arrived_pickup'] } }),
+            PickupRequest.countDocuments({ status: { $in: ['picked_up', 'en_route_delivery'] } }),
+            User.countDocuments({ role: 'volunteer', verificationStatus: 'verified', isActive: true }),
+            Donation.find({ status: { $in: ['submitted', 'assigned'] } })
+                .populate('donorId', 'name')
+                .populate('charityId', 'charityName')
+                .sort({ createdAt: -1 })
+                .limit(5)
+                .lean(),
+            PickupRequest.find({ status: { $in: ['available', 'accepted', 'en_route_pickup', 'picked_up', 'en_route_delivery'] } })
+                .populate('volunteer', 'name')
+                .populate('charity', 'charityName')
+                .sort({ createdAt: -1 })
+                .limit(5)
+                .lean()
+        ]);
+
+        const operationalMetrics = {
+            activeItemListings: {
+                count: activeItemListings,
+                label: 'Active Item Listings',
+                action: 'View All Listings',
+                color: 'blue'
+            },
+            pendingPickups: {
+                count: pendingPickups,
+                label: 'Pending Pickups',
+                action: 'Manage Pickups',
+                color: 'red'
+            },
+            pendingDeliveries: {
+                count: pendingDeliveries,
+                label: 'Pending Deliveries',
+                action: 'Coordinate Deliveries',
+                color: 'orange'
+            },
+            activeVolunteers: {
+                count: activeVolunteers,
+                label: 'Active Volunteers',
+                action: 'View Volunteer Roster',
+                color: 'green'
+            }
+        };
+
+        // Format recent activities
+        const recentActivities = [
+            ...recentDonations.map(donation => ({
+                id: donation._id,
+                type: 'donation',
+                title: `New donation from ${donation.donorId?.name || 'Anonymous'}`,
+                subtitle: `For ${donation.charityId?.charityName || 'Unknown Charity'}`,
+                timestamp: donation.createdAt,
+                status: donation.status,
+                itemCount: donation.donationItems?.length || 0
+            })),
+            ...recentPickups.map(pickup => ({
+                id: pickup._id,
+                type: 'pickup',
+                title: `Pickup ${pickup.status.replace('_', ' ')}`,
+                subtitle: pickup.volunteer ? `Volunteer: ${pickup.volunteer.name}` : 'Awaiting volunteer assignment',
+                timestamp: pickup.updatedAt,
+                status: pickup.status,
+                priority: pickup.priority
+            }))
+        ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 10);
+
+        res.json({
+            success: true,
+            data: {
+                metrics: operationalMetrics,
+                recentActivities,
+                lastUpdated: new Date()
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching operational metrics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error fetching operational metrics',
+            error: error.message
+        });
+    }
+};
+
+// @desc    Get user analytics for dashboard
+// @route   GET /api/admin/dashboard/user-analytics
+// @access  Private/Admin
+const getUserAnalytics = async (req, res) => {
+    try {
+        const { timeframe = '30d' } = req.query;
+
+        let dateFilter = {};
+        const now = new Date();
+
+        switch (timeframe) {
+            case '7d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '30d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '90d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '1y':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) } };
+                break;
+            default:
+                dateFilter = {};
+        }
+
+        const [
+            usersByRole,
+            newUsersOverTime,
+            verificationStats,
+            userActivity
+        ] = await Promise.all([
+            // Users by role
+            User.aggregate([
+                { $group: { _id: '$role', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]),
+
+            // New users over time (daily for last 30 days)
+            User.aggregate([
+                { $match: dateFilter },
+                {
+                    $group: {
+                        _id: {
+                            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                            role: '$role'
+                        },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { '_id.date': 1 } }
+            ]),
+
+            // Verification statistics
+            User.aggregate([
+                { $match: { role: { $in: ['volunteer', 'charity'] } } },
+                {
+                    $group: {
+                        _id: {
+                            role: '$role',
+                            status: '$verificationStatus'
+                        },
+                        count: { $sum: 1 }
+                    }
+                }
+            ]),
+
+            // User activity (recent logins)
+            User.aggregate([
+                { $match: { lastLogin: { $exists: true } } },
+                {
+                    $group: {
+                        _id: '$role',
+                        activeUsers: {
+                            $sum: {
+                                $cond: [
+                                    { $gte: ['$lastLogin', new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)] },
+                                    1,
+                                    0
+                                ]
+                            }
+                        },
+                        totalUsers: { $sum: 1 }
+                    }
+                }
+            ])
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                usersByRole,
+                newUsersOverTime,
+                verificationStats,
+                userActivity,
+                timeframe,
+                generatedAt: new Date()
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching user analytics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error fetching user analytics',
+            error: error.message
+        });
+    }
+};
+
+// @desc    Get donation trends and analytics
+// @route   GET /api/admin/dashboard/donation-trends
+// @access  Private/Admin
+const getDonationTrends = async (req, res) => {
+    try {
+        const { timeframe = '30d', aggregation = 'daily' } = req.query;
+
+        let dateFilter = {};
+        const now = new Date();
+
+        switch (timeframe) {
+            case '7d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '30d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '90d':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) } };
+                break;
+            case '1y':
+                dateFilter = { createdAt: { $gte: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) } };
+                break;
+            default:
+                dateFilter = {};
+        }
+
+        let dateFormat;
+        switch (aggregation) {
+            case 'monthly':
+                dateFormat = '%Y-%m';
+                break;
+            case 'yearly':
+                dateFormat = '%Y';
+                break;
+            default:
+                dateFormat = '%Y-%m-%d';
+        }
+
+        const [
+            donationsByStatus,
+            donationsOverTime,
+            monthlyDonationItems,
+            donationsByCategory,
+            avgDeliveryTime,
+            topCharities,
+            topDonors
+        ] = await Promise.all([
+            // Donations by status
+            Donation.aggregate([
+                { $match: dateFilter },
+                { $group: { _id: '$status', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]),
+
+            Donation.aggregate([
+                { $match: dateFilter },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: dateFormat, date: '$createdAt' } },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { '_id': 1 } }
+            ]),
+
+            Donation.aggregate([
+                {
+                    $match: {
+                        createdAt: {
+                            $gte: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+                        }
+                    }
+                },
+                { $unwind: '$donationItems' },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+                        itemCount: { $sum: 1 },
+                        donationCount: { $addToSet: '$_id' }
+                    }
+                },
+                {
+                    $addFields: {
+                        donationCount: { $size: '$donationCount' }
+                    }
+                },
+                { $sort: { '_id': 1 } }
+            ]),
+
+            Donation.aggregate([
+                { $match: dateFilter },
+                { $unwind: '$donationItems' },
+                {
+                    $lookup: {
+                        from: 'categories',
+                        localField: 'donationItems.category',
+                        foreignField: '_id',
+                        as: 'categoryInfo'
+                    }
+                },
+                { $unwind: '$categoryInfo' },
+                {
+                    $group: {
+                        _id: '$categoryInfo.name',
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { count: -1 } }
+            ]),
+
+            // Average delivery time (mock calculation)
+            Donation.aggregate([
+                { $match: { ...dateFilter, status: 'delivered' } },
+                {
+                    $group: {
+                        _id: null,
+                        avgTime: { $avg: { $subtract: ['$updatedAt', '$createdAt'] } }
+                    }
+                }
+            ]),
+
+            // Top charities by donations received
+            Donation.aggregate([
+                { $match: dateFilter },
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'charityId',
+                        foreignField: '_id',
+                        as: 'charity'
+                    }
+                },
+                { $unwind: '$charity' },
+                {
+                    $group: {
+                        _id: '$charity._id',
+                        charityName: { $first: '$charity.charityName' },
+                        donationCount: { $sum: 1 }
+                    }
+                },
+                { $sort: { donationCount: -1 } },
+                { $limit: 5 }
+            ]),
+
+            // Top donors
+            Donation.aggregate([
+                { $match: dateFilter },
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'donorId',
+                        foreignField: '_id',
+                        as: 'donor'
+                    }
+                },
+                { $unwind: '$donor' },
+                {
+                    $group: {
+                        _id: '$donor._id',
+                        donorName: { $first: '$donor.name' },
+                        donationCount: { $sum: 1 }
+                    }
+                },
+                { $sort: { donationCount: -1 } },
+                { $limit: 5 }
+            ])
+        ]);
+
+        // Calculate average delivery time in hours
+        const avgDeliveryHours = avgDeliveryTime[0] ?
+            Math.round(avgDeliveryTime[0].avgTime / (1000 * 60 * 60)) : 0;
+
+        const platformTrends = {
+            monthlyData: monthlyDonationItems.map(item => ({
+                month: item._id,
+                itemCount: item.itemCount,
+                donationCount: item.donationCount,
+                monthLabel: new Date(item._id + '-01').toLocaleDateString('en-US', {
+                    month: 'short',
+                    year: 'numeric'
+                })
+            })),
+            currentMonth: {
+                itemCount: monthlyDonationItems[monthlyDonationItems.length - 1]?.itemCount || 0,
+                month: monthlyDonationItems[monthlyDonationItems.length - 1]?._id || new Date().toISOString().slice(0, 7)
+            },
+            previousMonth: {
+                itemCount: monthlyDonationItems[monthlyDonationItems.length - 2]?.itemCount || 0,
+                month: monthlyDonationItems[monthlyDonationItems.length - 2]?._id || ''
+            }
+        };
+
+        const currentCount = platformTrends.currentMonth.itemCount;
+        const previousCount = platformTrends.previousMonth.itemCount;
+        const growthPercentage = previousCount > 0
+            ? ((currentCount - previousCount) / previousCount * 100).toFixed(1)
+            : currentCount > 0 ? 100 : 0;
+
+        platformTrends.growthPercentage = parseFloat(growthPercentage);
+        platformTrends.isIncreasing = platformTrends.growthPercentage > 0;
+        platformTrends.trend = platformTrends.isIncreasing ? 'Increasing' :
+                             platformTrends.growthPercentage < 0 ? 'Decreasing' : 'Stable';
+
+        res.json({
+            success: true,
+            data: {
+                donationsByStatus,
+                donationsOverTime,
+                platformTrends,
+                donationsByCategory,
+                avgDeliveryTime: avgDeliveryHours,
+                topCharities,
+                topDonors,
+                timeframe,
+                aggregation,
+                generatedAt: new Date()
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching donation trends:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error fetching donation trends',
+            error: error.message
+        });
+    }
+};
+
+export {
+    getDashboardOverview,
+    getSupplyDemandAnalysis,
+    getOperationalMetrics,
+    getUserAnalytics,
+    getDonationTrends
+};

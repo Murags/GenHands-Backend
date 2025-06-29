@@ -323,9 +323,9 @@ const verifyUser = async (req, res) => {
             }
             // --- End email notification ---
 
-            res.json({
-                message: `User ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
-                user: {
+        res.json({
+            message: `User ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
+            user: {
                     _id: updatedUser._id,
                     name: updatedUser.name,
                     email: updatedUser.email,

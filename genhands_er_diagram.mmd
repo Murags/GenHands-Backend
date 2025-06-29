@@ -1,0 +1,138 @@
+```mermaid
+erDiagram
+    %% Core Entities and Relationships
+    USER ||--o{ DONATION : creates
+    USER ||--o{ PICKUP-REQUEST : handles
+    USER ||--o{ VERIFICATION : requires
+
+    DONOR ||--o{ DONATION : makes
+    CHARITY ||--o{ DONATION : receives
+    VOLUNTEER ||--o{ PICKUP-REQUEST : accepts
+    ADMIN ||--o{ VERIFICATION : approves
+
+    DONATION ||--|| PICKUP-REQUEST : generates
+    DONATION ||--|{ DONATION-ITEM : contains
+    DONATION }|--|| CHARITY : "delivered to"
+    DONATION }|--|| DONOR : "created by"
+
+    CATEGORY ||--|{ DONATION-ITEM : classifies
+    CHARITY }|..|{ CATEGORY : needs
+
+    PICKUP-REQUEST }|--|| VOLUNTEER : "assigned to"
+    PICKUP-REQUEST }|--|| DONATION : "for"
+
+    %% Entity Definitions
+    USER {
+        ObjectId id PK
+        string name
+        string email
+        string password
+        string role
+        boolean isVerified
+        date createdAt
+        date updatedAt
+    }
+
+    DONOR {
+        ObjectId userId PK, FK
+        string phoneNumber
+        string location
+        number totalDonations
+        date lastDonationDate
+    }
+
+    VOLUNTEER {
+        ObjectId userId PK, FK
+        string phoneNumber
+        string skills
+        string verificationStatus
+        boolean isActive
+        string location
+        number completedPickups
+        number rating
+    }
+
+    CHARITY {
+        ObjectId userId PK, FK
+        string charityName
+        string description
+        string registrationNumber
+        string contactFirstName
+        string contactLastName
+        string contactEmail
+        string contactPhone
+        object location
+        string verificationStatus
+        string needsStatement
+    }
+
+    ADMIN {
+        ObjectId userId PK, FK
+        string permissions
+        date lastAccessDate
+        number actionsPerformed
+    }
+
+    DONATION {
+        ObjectId id PK
+        ObjectId donorId FK
+        ObjectId charityId FK
+        string status
+        string urgencyLevel
+        string pickupAddress
+        object pickupLocation
+        string specialInstructions
+        string thankYouNote
+        date confirmedAt
+        ObjectId confirmedBy FK
+        date createdAt
+        date updatedAt
+    }
+
+    DONATION-ITEM {
+        ObjectId id PK
+        ObjectId donationId FK
+        ObjectId categoryId FK
+        string itemName
+        string description
+        string quantity
+        string condition
+        string imageUrl
+    }
+
+    PICKUP-REQUEST {
+        ObjectId id PK
+        ObjectId donationId FK
+        ObjectId volunteerId FK
+        ObjectId charityId FK
+        string status
+        string priority
+        date scheduledDate
+        string notes
+        object metadata
+        date createdAt
+        date updatedAt
+    }
+
+    CATEGORY {
+        ObjectId id PK
+        string name
+        string description
+        string icon
+        boolean isActive
+        number sortOrder
+        date createdAt
+    }
+
+    VERIFICATION {
+        ObjectId id PK
+        ObjectId userId FK
+        ObjectId verifiedBy FK
+        string status
+        string userType
+        string documents
+        string notes
+        date submittedAt
+        date reviewedAt
+    }
+```
