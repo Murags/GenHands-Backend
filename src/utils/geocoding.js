@@ -241,7 +241,7 @@ export const calculateDistance = (coord1, coord2) => {
   const [lat1, lon1] = coord1;
   const [lat2, lon2] = coord2;
 
-  const R = 6371; // Radius of the Earth in kilometers
+  const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
 
@@ -253,7 +253,7 @@ export const calculateDistance = (coord1, coord2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   const distance = R * c;
 
-  return Math.round(distance * 10) / 10; // Round to 1 decimal place
+  return Math.round(distance * 10) / 10;
 };
 
 /**
