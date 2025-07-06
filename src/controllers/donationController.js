@@ -363,22 +363,22 @@ export const getPickupRequests = async (req, res) => {
       const latitude = parseFloat(lat);
       const longitude = parseFloat(lng);
 
-      if (!validateCoordinates([longitude, latitude])) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid coordinates provided'
-        });
-      }
+      // if (!validateCoordinates([longitude, latitude])) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: 'Invalid coordinates provided'
+      //   });
+      // }
 
-      query.pickupCoordinates = {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [longitude, latitude]
-          },
-          $maxDistance: radius * 1000 // Convert km to meters
-        }
-      };
+      // query.pickupCoordinates = {
+      //   $near: {
+      //     $geometry: {
+      //       type: 'Point',
+      //       coordinates: [longitude, latitude]
+      //     },
+      //     $maxDistance: radius * 1000 // Convert km to meters
+      //   }
+      // };
     }
 
     const pickupRequests = await PickupRequest.find(query)
@@ -396,31 +396,33 @@ export const getPickupRequests = async (req, res) => {
 
       if (volunteersLocation && request.pickupCoordinates?.coordinates) {
         const requestCoordsLatLon = [request.pickupCoordinates.coordinates[1], request.pickupCoordinates.coordinates[0]];
-        const volunteerCoordsLatLon = [volunteersLocation[1], volunteersLocation[0]];
+        const volunteerCoordsLatLon = [volunteersLocation[0], volunteersLocation[1]];
         distance = calculateDistance(volunteerCoordsLatLon, requestCoordsLatLon);
         estimatedTime = Math.round(distance / 30 * 60); // Rough estimate: 30 km/h
       }
-
-      return {
-        id: request._id,
-        charity: charity ? charity.charityName : 'N/A',
-        address: request.pickupAddress,
-        coordinates: request.pickupCoordinates?.coordinates,
-        items: request.items.map(item => `${item.description} (${item.quantity})`),
-        contactPerson: request.contactPerson,
-        phone: request.contactPhone,
-        priority: request.priority,
-        status: request.status,
-        deliveryAddress: request.deliveryAddress,
-        distance: distance ? `${distance} km` : null,
-        estimatedTime: estimatedTime ? `${estimatedTime} min` : null,
-        metadata: request.metadata,
-        createdAt: request.createdAt,
-        updatedAt: request.updatedAt
-      };
+      if (distance < radius) {
+        return {
+          id: request._id,
+          charity: charity ? charity.charityName : 'N/A',
+          address: request.pickupAddress,
+          coordinates: request.pickupCoordinates?.coordinates,
+          items: request.items.map(item => `${item.description} (${item.quantity})`),
+          contactPerson: request.contactPerson,
+          phone: request.contactPhone,
+          priority: request.priority,
+          status: request.status,
+          deliveryAddress: request.deliveryAddress,
+          distance: distance ? `${distance} km` : null,
+          estimatedTime: estimatedTime ? `${estimatedTime} min` : null,
+          metadata: request.metadata,
+          createdAt: request.createdAt,
+            updatedAt: request.updatedAt
+          };
+      }
     });
 
     const filteredRequests = formattedRequests.filter(request => {
+      if (!request) return false;
       const originalRequest = pickupRequests.find(pr => pr._id.equals(request.id));
       return !!originalRequest.donation;
     });

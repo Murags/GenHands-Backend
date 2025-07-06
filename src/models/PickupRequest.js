@@ -29,8 +29,7 @@ const pickupRequestSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number],
-      required: true,
-      index: '2dsphere'
+      required: true
     }
   },
   deliveryAddress: {
@@ -99,11 +98,18 @@ const pickupRequestSchema = new mongoose.Schema({
   timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' }
 });
 
+// Geospatial index for location-based queries
+pickupRequestSchema.index({ pickupCoordinates: '2dsphere' });
+
 // Compound indexes for optimized queries
 pickupRequestSchema.index({ status: 1, priority: 1 });
 pickupRequestSchema.index({ status: 1, createdAt: -1 });
 pickupRequestSchema.index({ volunteer: 1, status: 1 });
 pickupRequestSchema.index({ charity: 1 });
+
+// Compound geospatial indexes for filtered location queries
+pickupRequestSchema.index({ status: 1, pickupCoordinates: '2dsphere' });
+pickupRequestSchema.index({ priority: -1, status: 1, pickupCoordinates: '2dsphere' });
 
 // Method to calculate distance from volunteer location
 pickupRequestSchema.methods.calculateDistance = function(volunteerCoordinates) {
