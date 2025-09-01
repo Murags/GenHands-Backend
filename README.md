@@ -1,4 +1,4 @@
-# Generous Hands Backend
+# 🌱 Generous Hands Backend
 
 Welcome to the backend API for **Generous Hands** – a platform connecting donors, charities, and volunteers to make giving and receiving easier, safer, and more impactful.
 
