@@ -125,7 +125,7 @@ GenHands-Backend/
 ## 📧 Contact & Support
 
 Questions, feedback, or need help?  
-Email us at [janny.jonyo@strathmore.edu](mailto:janny.jonyo@strathmore.edu)
+Email us at [janny.jonyo@strathmore.edu](mailto:janny.jonyo@strathmore.edu) OR [dennis.mukoma@strathmore.edu](mailto:dennis.mukoma@strathmore.edu)
 
 ---
 
